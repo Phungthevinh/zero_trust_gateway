@@ -118,4 +118,11 @@ Xem chi tiết trạng thái triển khai tại [PROGRESS.md](PROGRESS.md).
 Mọi đóng góp, báo lỗi (issues) và yêu cầu tính năng (PRs) đều được chào đón! Hãy mở một Pull Request hoặc Issue để chúng ta cùng thảo luận.
 
 ## 📄 Giấy phép (License)
-Dự án được phân phối dưới giấy phép **MIT**. Xem tệp `LICENSE` để biết thêm chi tiết.
+Dự án được phân phối dưới giấy phép **MIT**. Xem tệp [LICENSE](LICENSE) để biết thêm chi tiết.
+
+---
+
+## 👤 Tác giả (Author)
+* **Phùng Thế Vinh** - *Chủ dự án & Nhà phát triển chính* - [@Phungthevinh](https://github.com/Phungthevinh)
+* Email liên hệ: ptvstar2003@gmail.com
+
