@@ -1,0 +1,52 @@
+# Cấu hình Máy chủ (Server Settings)
+server:
+  host: "127.0.0.1"        # Lắng nghe địa chỉ localhost
+  port: 8080               # Cổng chạy Gateway công cộng
+  log_level: "info"        # Mức độ ghi log (debug, info, warn, error)
+
+# Cấu hình Cache & Database (Phase 2 & 3)
+database:
+  redis_url: "redis://127.0.0.1:6379"  # Kết nối Redis để đồng bộ rate limit
+  connection_timeout: 5000              # Thời gian chờ kết nối (ms)
+
+# Bảo mật Zero-Trust & Xác thực (Phase 2)
+security:
+  jwt:
+    secret_key_path: "certs/jwt_public.pem" # Khóa công khai để xác thực JWT của client
+    issuer: "your-auth-service"             # Nhà phát hành token hợp lệ
+  zero_trust:
+    private_key_path: "certs/gateway_private.pem" # Khóa riêng để ký chữ ký nội bộ (Ed25519)
+    signature_header: "X-Gateway-Signature"       # Tên header đính kèm chữ ký nội bộ
+
+# Tích hợp Trí tuệ nhân tạo (Phase 3 - AI-Native)
+ai_native:
+  model_path: "models/all-MiniLM-L6-v2.onnx" # Đường dẫn mô hình ONNX Embedding cục bộ
+  similarity_threshold: 0.85                 # Độ tương đồng tối thiểu để tính là Cache Hit
+  cache_ttl: 3600                            # Thời gian sống của cache câu hỏi (giây)
+
+# Các quy tắc định tuyến API (Routing Rules)
+routes:
+  # Route 1: Dịch vụ Quản lý User (Chuyển tiếp tới Upstream cổng 8081)
+  - path: "/api/v1/users"
+    target: "http://127.0.0.1:8081"
+    strip_prefix: true        # Bỏ "/api/v1/users" khi chuyển tiếp sang Upstream
+    auth_required: true       # Bắt buộc check JWT ở Gateway
+    rate_limit:
+      max_requests: 100       # Tối đa 100 requests
+      per_seconds: 60         # Trong mỗi 60 giây
+
+  # Route 2: Dịch vụ Quản lý Đơn hàng (Chuyển tiếp tới Upstream cổng 8082, không cần auth)
+  - path: "/api/v1/orders"
+    target: "http://127.0.0.1:8082"
+    strip_prefix: true
+    auth_required: false
+    rate_limit:
+      max_requests: 50
+      per_seconds: 60
+
+  # Route 3: Gateway chuyển tiếp và cache AI
+  - path: "/api/v1/ai/chat"
+    target: "https://api.openai.com/v1/chat/completions"
+    strip_prefix: false
+    auth_required: true
+    ai_caching: true          # Kích hoạt Semantic Caching cho luồng này
