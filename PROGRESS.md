@@ -16,8 +16,8 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 ### 🟡 Giai đoạn 1: Xây dựng Lõi hiệu năng (Core Engine) & Reverse Proxy (Tháng 1-2)
 - [x] Thiết lập cấu hình ban đầu và cài đặt thư viện cần thiết (`Cargo.toml`)
 - [x] Thiết kế và lập cấu trúc file cấu hình `config.yaml` cho Gateway
-- [/] Viết struct và bộ đọc cấu hình trong `src/config.rs` (Đang sửa lỗi kiểu dữ liệu)
-- [ ] Xây dựng Web Server cơ bản sử dụng `axum` & `tokio`
+- [x] Viết struct và bộ đọc cấu hình trong `src/config.rs`
+- [/] Xây dựng Web Server cơ bản sử dụng `axum` & `tokio` (Đang chuẩn bị thiết lập)
 - [ ] Triển khai Reverse Proxy Middleware chuyển tiếp request sang cổng dịch vụ Upstream
 - [ ] Kiểm tra tối ưu hóa rò rỉ bộ nhớ (memory leaks) và đo đạc hiệu năng cơ bản
 
