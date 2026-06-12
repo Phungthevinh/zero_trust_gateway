@@ -64,6 +64,7 @@ pub struct RouteConfig {
     pub strip_prefix: bool,
     pub auth_required: bool,
     pub rate_limit: Option<RateLimitConfig>,
+    pub ai_caching: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
