@@ -6,8 +6,8 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 
 ## 📊 Trạng thái Hiện tại
 * **Giai đoạn Hiện tại**: Giai đoạn 1: Lõi hiệu năng (Core Engine) & Reverse Proxy
-* **Trạng thái**: 🟡 Đang triển khai Reverse Proxy & Chuyển tiếp Request sang Upstream
-* **Cập nhật gần nhất**: 12/06/2026
+* **Trạng thái**: 🟡 Đang chuẩn bị Kiểm tra tối ưu hóa rò rỉ bộ nhớ & Đo đạc hiệu năng
+* **Cập nhật gần nhất**: 14/06/2026
 
 ---
 
@@ -18,7 +18,7 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 - [x] Thiết kế và lập cấu trúc file cấu hình `config.yaml` cho Gateway
 - [x] Viết struct và bộ đọc cấu hình trong `src/config.rs`
 - [x] Xây dựng Web Server cơ bản sử dụng `axum` & `tokio`
-- [/] Triển khai Reverse Proxy Middleware chuyển tiếp request sang cổng dịch vụ Upstream
+- [x] Triển khai Reverse Proxy Middleware chuyển tiếp request sang cổng dịch vụ Upstream
 - [ ] Kiểm tra tối ưu hóa rò rỉ bộ nhớ (memory leaks) và đo đạc hiệu năng cơ bản
 
 ### ⚪ Giai đoạn 2: Tích hợp Lưới bảo mật Zero-Trust & Rate Limiting (Tháng 3-4)
