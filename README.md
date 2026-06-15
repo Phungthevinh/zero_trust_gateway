@@ -110,15 +110,25 @@ cargo build --release
 ```
 
 ### 5. Thử nghiệm hiệu năng & Kiểm tra độ trễ (Latency & Benchmark Testing)
-Hệ thống tích hợp sẵn kịch bản kiểm thử đo đạc hiệu năng chuyển tiếp gói tin (Reverse Proxy latency) thông qua mock upstream server chạy ngầm. Để chạy thử nghiệm hiệu năng và xem báo cáo độ trễ chi tiết, bạn hãy chạy lệnh sau:
-```bash
-cargo test -- --nocapture
-```
+Hệ thống tích hợp sẵn kịch bản kiểm thử đo đạc hiệu năng chuyển tiếp gói tin (Reverse Proxy latency) thông qua mock upstream server chạy ngầm.
 
-**Báo cáo kiểm thử thực tế trên localhost (Chế độ Debug):**
-* **Số lượng request**: 100 requests liên tục.
-* **Độ trễ trung bình**: **~251.7 μs** (tương đương **~0.25 ms**).
-* **Tỉ lệ thành công**: 100% (HTTP 200 OK).
+* **Chạy thử nghiệm ở chế độ Debug (Chạy phát triển)**:
+  ```bash
+  cargo test -- --nocapture
+  ```
+* **Chạy thử nghiệm ở chế độ Release (Tối ưu hiệu năng)**:
+  ```bash
+  cargo test --release -- --nocapture
+  ```
+
+**Báo cáo kiểm thử thực tế trên localhost:**
+* **Chế độ Debug (100 requests liên tục):**
+  * **Độ trễ trung bình**: **~251.7 μs** (tương đương **~0.25 ms**).
+  * **Tỉ lệ thành công**: 100% (HTTP 200 OK).
+* **Chế độ Release (100,000 requests liên tục):**
+  * **Độ trễ trung bình**: **~75.87 μs** (tương đương **~0.075 ms**).
+  * **Tỉ lệ thành công**: 100% (HTTP 200 OK).
+  * **Tổng thời gian hoàn thành**: **7.69s**.
 
 ---
 

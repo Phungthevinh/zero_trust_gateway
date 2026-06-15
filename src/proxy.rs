@@ -129,20 +129,21 @@ pub async fn proxy_handler(State(state): State<AppState>, req: Request<Body>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{routing::get, Router};
-    use std::time::Instant;
     use crate::config::{
-        RouteConfig, ServerConfig, DatabaseConfig, SecurityConfig, JwtConfig,
-        ZeroTrustConfig, AiNativeConfig,
+        AiNativeConfig, DatabaseConfig, JwtConfig, RouteConfig, SecurityConfig, ServerConfig,
+        ZeroTrustConfig,
     };
+    use axum::{Router, routing::get};
+    use std::time::Instant;
 
     #[tokio::test]
     async fn test_proxy_latency_and_correctness() {
         // 1. Khởi chạy một Mock Upstream Server trên cổng ngẫu nhiên (cổng 0 sẽ tự chọn cổng trống)
-        let mock_upstream = Router::new().route("/target-path", get(|| async { "Hello from Upstream" }));
+        let mock_upstream =
+            Router::new().route("/target-path", get(|| async { "Hello from Upstream" }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let upstream_addr = listener.local_addr().unwrap();
-        
+
         // Chạy Mock Upstream dưới dạng tác vụ chạy ngầm
         tokio::spawn(async move {
             axum::serve(listener, mock_upstream).await.unwrap();
@@ -191,9 +192,7 @@ mod tests {
             client: reqwest::Client::new(),
         };
 
-        let app = Router::new()
-            .fallback(proxy_handler)
-            .with_state(state);
+        let app = Router::new().fallback(proxy_handler).with_state(state);
 
         // 4. Đo độ trễ chuyển tiếp qua Gateway
         use tower::ServiceExt; // Dành cho gọi method oneshot
@@ -206,7 +205,7 @@ mod tests {
         let _response = app.clone().oneshot(req).await.unwrap();
 
         let mut total_duration = std::time::Duration::default();
-        let iterations = 100; // Đo trên 100 request liên tục để có số liệu chính xác
+        let iterations = 100_000; // Đo trên 10000 request liên tục để có số liệu chính xác
 
         for _ in 0..iterations {
             let req = Request::builder()
