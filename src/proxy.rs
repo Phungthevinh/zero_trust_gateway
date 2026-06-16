@@ -163,8 +163,8 @@ mod tests {
         ZeroTrustConfig,
     };
     use axum::{Router, routing::get};
+    use jsonwebtoken::{EncodingKey, Header, encode};
     use std::time::{Instant, SystemTime, UNIX_EPOCH};
-    use jsonwebtoken::{encode, EncodingKey, Header};
 
     // Helper để tạo token JWT hợp lệ cho việc kiểm thử
     fn generate_test_token() -> String {
@@ -184,7 +184,12 @@ mod tests {
             iss: "test".to_string(),
         };
 
-        encode(&Header::new(jsonwebtoken::Algorithm::RS256), &claims, &encoding_key).unwrap()
+        encode(
+            &Header::new(jsonwebtoken::Algorithm::RS256),
+            &claims,
+            &encoding_key,
+        )
+        .unwrap()
     }
 
     #[tokio::test]
@@ -262,7 +267,7 @@ mod tests {
         let _response = app.clone().oneshot(req).await.unwrap();
 
         let mut total_duration = std::time::Duration::default();
-        let iterations = 1000; // Đo trên 1000 request liên tục để có số liệu chính xác và nhanh chóng
+        let iterations = 50000; // Đo trên 50000 request liên tục để có số liệu chính xác và nhanh chóng
 
         for _ in 0..iterations {
             let req = Request::builder()
@@ -296,8 +301,7 @@ mod tests {
     #[tokio::test]
     async fn test_jwt_auth_flow() {
         // 1. Khởi chạy một Mock Upstream Server
-        let mock_upstream =
-            Router::new().route("/secure-data", get(|| async { "Secret content" }));
+        let mock_upstream = Router::new().route("/secure-data", get(|| async { "Secret content" }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let upstream_addr = listener.local_addr().unwrap();
 
@@ -382,7 +386,9 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
 
         // Đọc nội dung response
-        let body_bytes = axum::body::to_bytes(response.into_body(), 1024).await.unwrap();
+        let body_bytes = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
         assert_eq!(body_bytes, "Secret content");
     }
 }
