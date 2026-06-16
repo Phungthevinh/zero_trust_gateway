@@ -6,8 +6,10 @@
 
 use axum::{Router, routing::get};
 use config::Config;
+use jsonwebtoken::DecodingKey;
 use std::sync::Arc;
 
+mod auth;
 mod config;
 mod proxy;
 
@@ -41,10 +43,24 @@ async fn main() {
             println!("- AI Native Cache TTL: {}", config.ai_native.cache_ttl);
             println!("- Routes: {:#?}", config.routes);
             println!("--------------------------------------------------");
+
+            //khởi tạo public key
+            let public_key_pem = match std::fs::read(&config.security.jwt.secret_key_path) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    tracing::error!("Lỗi khi đọc public key: {}", e);
+                    return;
+                }
+            };
+
+            //khởi tạo decoding key
+            let decoding_key = DecodingKey::from_rsa_pem(&public_key_pem).unwrap();
+
             // 1. Khởi tạo AppState dùng chung
             let state = AppState {
                 config: Arc::new(config.clone()),
                 client: reqwest::Client::new(),
+                jwt_decoding_key: Arc::new(decoding_key),
             };
             // 2. Dựng Router và gắn State
             let app = Router::new()
