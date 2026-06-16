@@ -22,7 +22,7 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 - [x] Kiểm tra tối ưu hóa rò rỉ bộ nhớ (memory leaks) và đo đạc hiệu năng cơ bản
 
 ### 🟡 Giai đoạn 2: Tích hợp Lưới bảo mật Zero-Trust & Rate Limiting (Tháng 3-4)
-- [/] Viết Middleware xác thực Token JWT (`jsonwebtoken`) *(Đang thực hiện: Đã định nghĩa struct Claims, hàm verify_token và nạp DecodingKey vào AppState)*
+- [x] Viết Middleware xác thực Token JWT (`jsonwebtoken`)
 - [ ] Thiết lập cơ chế chữ ký nội bộ (Internal Signature) bằng mật mã Ed25519 (`ring`)
 - [ ] Xây dựng bộ lọc Rate Limiting cục bộ với thuật toán Token/Leaky Bucket sử dụng `moka`
 - [ ] Tích hợp `redis` để đồng bộ hóa Rate Limiting giữa các cụm Gateway

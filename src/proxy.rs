@@ -1,3 +1,4 @@
+use crate::auth;
 use crate::config::Config;
 use axum::{
     body::Body,
@@ -18,7 +19,9 @@ pub struct AppState {
 
 // Handler nhận request và khớp route
 pub async fn proxy_handler(State(state): State<AppState>, req: Request<Body>) -> impl IntoResponse {
-    let path = req.uri().path().to_string();
+    let (parts, body) = req.into_parts();
+
+    let path = parts.uri.path();
 
     // Duyệt qua danh sách routes để tìm route khớp
     let matched_route = state
@@ -35,7 +38,31 @@ pub async fn proxy_handler(State(state): State<AppState>, req: Request<Body>) ->
                 route.target
             );
 
-            let (parts, body) = req.into_parts();
+            if route.auth_required {
+                let token = auth::extract_token_from_header(&parts.headers);
+                match token {
+                    None => return StatusCode::UNAUTHORIZED.into_response(),
+                    Some(token_str) => {
+                        match auth::verify_token(
+                            &token_str,
+                            &state.jwt_decoding_key,
+                            &state.config.security.jwt.issuer,
+                        ) {
+                            Ok(token_data) => {
+                                tracing::debug!(
+                                    "Token JWT hợp lệ cho user: {}",
+                                    token_data.claims.sub
+                                );
+                            }
+                            Err(e) => {
+                                tracing::warn!("Token JWT không hợp lệ: {:?}", e);
+                                return StatusCode::UNAUTHORIZED.into_response();
+                            }
+                        }
+                    }
+                }
+            }
+
             let mut target_path = path.to_string();
             if route.strip_prefix {
                 if let Some(stripped) = path.strip_prefix(&route.path) {
@@ -128,113 +155,234 @@ pub async fn proxy_handler(State(state): State<AppState>, req: Request<Body>) ->
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use crate::config::{
-//         AiNativeConfig, DatabaseConfig, JwtConfig, RouteConfig, SecurityConfig, ServerConfig,
-//         ZeroTrustConfig,
-//     };
-//     use axum::{Router, routing::get};
-//     use std::time::Instant;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{
+        AiNativeConfig, DatabaseConfig, JwtConfig, RouteConfig, SecurityConfig, ServerConfig,
+        ZeroTrustConfig,
+    };
+    use axum::{Router, routing::get};
+    use std::time::{Instant, SystemTime, UNIX_EPOCH};
+    use jsonwebtoken::{encode, EncodingKey, Header};
 
-//     #[tokio::test]
-//     async fn test_proxy_latency_and_correctness() {
-//         // 1. Khởi chạy một Mock Upstream Server trên cổng ngẫu nhiên (cổng 0 sẽ tự chọn cổng trống)
-//         let mock_upstream =
-//             Router::new().route("/target-path", get(|| async { "Hello from Upstream" }));
-//         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-//         let upstream_addr = listener.local_addr().unwrap();
+    // Helper để tạo token JWT hợp lệ cho việc kiểm thử
+    fn generate_test_token() -> String {
+        let private_key_pem = std::fs::read("certs/jwt_private.pem")
+            .expect("Không tìm thấy certs/jwt_private.pem. Vui lòng chạy lệnh sinh khóa trước.");
+        let encoding_key = EncodingKey::from_rsa_pem(&private_key_pem).unwrap();
 
-//         // Chạy Mock Upstream dưới dạng tác vụ chạy ngầm
-//         tokio::spawn(async move {
-//             axum::serve(listener, mock_upstream).await.unwrap();
-//         });
+        let exp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize
+            + 3600; // Hết hạn sau 1 giờ
 
-//         // 2. Thiết lập cấu hình giả lập trỏ tới Mock Upstream
-//         let target_url = format!("http://{}", upstream_addr);
-//         let config = Config {
-//             server: ServerConfig {
-//                 host: "127.0.0.1".to_string(),
-//                 port: 8080,
-//                 log_level: "info".to_string(),
-//             },
-//             database: DatabaseConfig {
-//                 redis_url: "redis://127.0.0.1:6379".to_string(),
-//                 connection_timeout: 5000,
-//             },
-//             security: SecurityConfig {
-//                 jwt: JwtConfig {
-//                     secret_key_path: "certs/jwt_public.pem".to_string(),
-//                     issuer: "test".to_string(),
-//                 },
-//                 zero_trust: ZeroTrustConfig {
-//                     private_key_path: "certs/gateway_private.pem".to_string(),
-//                     signature_header: "X-Gateway-Signature".to_string(),
-//                 },
-//             },
-//             ai_native: AiNativeConfig {
-//                 model_path: "models/all-MiniLM-L6-v2.onnx".to_string(),
-//                 similarity_threshold: 0.85,
-//                 cache_ttl: 3600,
-//             },
-//             routes: vec![RouteConfig {
-//                 path: "/api/test".to_string(),
-//                 target: target_url,
-//                 strip_prefix: true,
-//                 auth_required: false,
-//                 rate_limit: None,
-//                 ai_caching: None,
-//             }],
-//         };
+        let claims = crate::auth::Claims {
+            sub: "test-user-vinh".to_string(),
+            exp,
+            iss: "test".to_string(),
+        };
 
-//         // 3. Khởi tạo AppState và Router Gateway giả lập
-//         let state = AppState {
-//             config: Arc::new(config),
-//             client: reqwest::Client::new(),
-//         };
+        encode(&Header::new(jsonwebtoken::Algorithm::RS256), &claims, &encoding_key).unwrap()
+    }
 
-//         let app = Router::new().fallback(proxy_handler).with_state(state);
+    #[tokio::test]
+    async fn test_proxy_latency_and_correctness() {
+        // 1. Khởi chạy một Mock Upstream Server trên cổng ngẫu nhiên (cổng 0 sẽ tự chọn cổng trống)
+        let mock_upstream =
+            Router::new().route("/target-path", get(|| async { "Hello from Upstream" }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_addr = listener.local_addr().unwrap();
 
-//         // 4. Đo độ trễ chuyển tiếp qua Gateway
-//         use tower::ServiceExt; // Dành cho gọi method oneshot
+        // Chạy Mock Upstream dưới dạng tác vụ chạy ngầm
+        tokio::spawn(async move {
+            axum::serve(listener, mock_upstream).await.unwrap();
+        });
 
-//         // Thực hiện cuộc gọi khởi động (warm-up) để nạp bộ nhớ đệm kết nối
-//         let req = Request::builder()
-//             .uri("/api/test/target-path")
-//             .body(Body::empty())
-//             .unwrap();
-//         let _response = app.clone().oneshot(req).await.unwrap();
+        // 2. Thiết lập cấu hình giả lập trỏ tới Mock Upstream
+        let target_url = format!("http://{}", upstream_addr);
+        let config = Config {
+            server: ServerConfig {
+                host: "127.0.0.1".to_string(),
+                port: 8080,
+                log_level: "info".to_string(),
+            },
+            database: DatabaseConfig {
+                redis_url: "redis://127.0.0.1:6379".to_string(),
+                connection_timeout: 5000,
+            },
+            security: SecurityConfig {
+                jwt: JwtConfig {
+                    secret_key_path: "certs/jwt_public.pem".to_string(),
+                    issuer: "test".to_string(),
+                },
+                zero_trust: ZeroTrustConfig {
+                    private_key_path: "certs/gateway_private.pem".to_string(),
+                    signature_header: "X-Gateway-Signature".to_string(),
+                },
+            },
+            ai_native: AiNativeConfig {
+                model_path: "models/all-MiniLM-L6-v2.onnx".to_string(),
+                similarity_threshold: 0.85,
+                cache_ttl: 3600,
+            },
+            routes: vec![RouteConfig {
+                path: "/api/test".to_string(),
+                target: target_url,
+                strip_prefix: true,
+                auth_required: false,
+                rate_limit: None,
+                ai_caching: None,
+            }],
+        };
 
-//         let mut total_duration = std::time::Duration::default();
-//         let iterations = 100_000; // Đo trên 10000 request liên tục để có số liệu chính xác
+        // Đọc public key pem thật để chạy test
+        let public_key_pem = std::fs::read("certs/jwt_public.pem")
+            .expect("Không tìm thấy certs/jwt_public.pem. Vui lòng chạy lệnh sinh khóa trước.");
+        let decoding_key = DecodingKey::from_rsa_pem(&public_key_pem).unwrap();
 
-//         for _ in 0..iterations {
-//             let req = Request::builder()
-//                 .uri("/api/test/target-path")
-//                 .body(Body::empty())
-//                 .unwrap();
+        // 3. Khởi tạo AppState và Router Gateway giả lập
+        let state = AppState {
+            config: Arc::new(config),
+            client: reqwest::Client::new(),
+            jwt_decoding_key: Arc::new(decoding_key),
+        };
 
-//             let start = Instant::now();
-//             let response = app.clone().oneshot(req).await.unwrap();
-//             let duration = start.elapsed();
+        let app = Router::new().fallback(proxy_handler).with_state(state);
 
-//             assert_eq!(response.status(), StatusCode::OK);
-//             total_duration += duration;
-//         }
+        // 4. Đo độ trễ chuyển tiếp qua Gateway
+        use tower::ServiceExt; // Dành cho gọi method oneshot
 
-//         let avg_latency = total_duration / iterations;
-//         println!("\n==============================================");
-//         println!("📊 KẾT QUẢ ĐO ĐỘ TRỄ CHUYỂN TIẾP (LATENCY TEST)");
-//         println!("- Số lượng request thử nghiệm: {} requests", iterations);
-//         println!("- Độ trễ trung bình mỗi request: {:?}", avg_latency);
-//         println!("==============================================\n");
+        // Thực hiện cuộc gọi khởi động (warm-up) để nạp bộ nhớ đệm kết nối
+        let req = Request::builder()
+            .uri("/api/test/target-path")
+            .body(Body::empty())
+            .unwrap();
+        let _response = app.clone().oneshot(req).await.unwrap();
 
-//         // Đảm bảo độ trễ chuyển tiếp nội bộ qua Gateway cực kỳ thấp (thường < 5ms trên localhost)
-//         assert!(
-//             avg_latency.as_millis() < 50,
-//             "Độ trễ chuyển tiếp quá lớn: {:?}",
-//             avg_latency
-//         );
-//     }
-// }
+        let mut total_duration = std::time::Duration::default();
+        let iterations = 1000; // Đo trên 1000 request liên tục để có số liệu chính xác và nhanh chóng
+
+        for _ in 0..iterations {
+            let req = Request::builder()
+                .uri("/api/test/target-path")
+                .body(Body::empty())
+                .unwrap();
+
+            let start = Instant::now();
+            let response = app.clone().oneshot(req).await.unwrap();
+            let duration = start.elapsed();
+
+            assert_eq!(response.status(), StatusCode::OK);
+            total_duration += duration;
+        }
+
+        let avg_latency = total_duration / iterations;
+        println!("\n==============================================");
+        println!("📊 KẾT QUẢ ĐO ĐỘ TRỄ CHUYỂN TIẾP (LATENCY TEST)");
+        println!("- Số lượng request thử nghiệm: {} requests", iterations);
+        println!("- Độ trễ trung bình mỗi request: {:?}", avg_latency);
+        println!("==============================================\n");
+
+        // Đảm bảo độ trễ chuyển tiếp nội bộ qua Gateway cực kỳ thấp (thường < 5ms trên localhost)
+        assert!(
+            avg_latency.as_millis() < 50,
+            "Độ trễ chuyển tiếp quá lớn: {:?}",
+            avg_latency
+        );
+    }
+
+    #[tokio::test]
+    async fn test_jwt_auth_flow() {
+        // 1. Khởi chạy một Mock Upstream Server
+        let mock_upstream =
+            Router::new().route("/secure-data", get(|| async { "Secret content" }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            axum::serve(listener, mock_upstream).await.unwrap();
+        });
+
+        // 2. Thiết lập cấu hình giả lập yêu cầu xác thực JWT (auth_required = true)
+        let target_url = format!("http://{}", upstream_addr);
+        let config = Config {
+            server: ServerConfig {
+                host: "127.0.0.1".to_string(),
+                port: 8080,
+                log_level: "info".to_string(),
+            },
+            database: DatabaseConfig {
+                redis_url: "redis://127.0.0.1:6379".to_string(),
+                connection_timeout: 5000,
+            },
+            security: SecurityConfig {
+                jwt: JwtConfig {
+                    secret_key_path: "certs/jwt_public.pem".to_string(),
+                    issuer: "test".to_string(),
+                },
+                zero_trust: ZeroTrustConfig {
+                    private_key_path: "certs/gateway_private.pem".to_string(),
+                    signature_header: "X-Gateway-Signature".to_string(),
+                },
+            },
+            ai_native: AiNativeConfig {
+                model_path: "models/all-MiniLM-L6-v2.onnx".to_string(),
+                similarity_threshold: 0.85,
+                cache_ttl: 3600,
+            },
+            routes: vec![RouteConfig {
+                path: "/api/secure".to_string(),
+                target: target_url,
+                strip_prefix: true,
+                auth_required: true, // Yêu cầu xác thực JWT
+                rate_limit: None,
+                ai_caching: None,
+            }],
+        };
+
+        let public_key_pem = std::fs::read("certs/jwt_public.pem").unwrap();
+        let decoding_key = DecodingKey::from_rsa_pem(&public_key_pem).unwrap();
+
+        let state = AppState {
+            config: Arc::new(config),
+            client: reqwest::Client::new(),
+            jwt_decoding_key: Arc::new(decoding_key),
+        };
+
+        let app = Router::new().fallback(proxy_handler).with_state(state);
+        use tower::ServiceExt;
+
+        // --- CASE 1: Request không gửi Token -> Bị chặn 401 ---
+        let req = Request::builder()
+            .uri("/api/secure/secure-data")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        // --- CASE 2: Request gửi Token sai/hỏng -> Bị chặn 401 ---
+        let req = Request::builder()
+            .uri("/api/secure/secure-data")
+            .header("Authorization", "Bearer invalid-token-xyz")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        // --- CASE 3: Request gửi Token hợp lệ -> Trả về 200 OK và lấy được nội dung ---
+        let valid_token = generate_test_token();
+        let req = Request::builder()
+            .uri("/api/secure/secure-data")
+            .header("Authorization", format!("Bearer {}", valid_token))
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Đọc nội dung response
+        let body_bytes = axum::body::to_bytes(response.into_body(), 1024).await.unwrap();
+        assert_eq!(body_bytes, "Secret content");
+    }
+}
