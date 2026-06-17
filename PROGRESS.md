@@ -6,8 +6,8 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 
 ## 📊 Trạng thái Hiện tại
 * **Giai đoạn Hiện tại**: Giai đoạn 2: Tích hợp Lưới bảo mật Zero-Trust & Rate Limiting (Tháng 3-4)
-* **Trạng thái**: 🟡 Đang thực hiện Giai đoạn 2 (Đang viết dở Middleware xác thực Token JWT)
-* **Cập nhật gần nhất**: 16/06/2026
+* **Trạng thái**: 🟡 Đang thực hiện Giai đoạn 2 (Đang thiết lập cơ chế chữ ký nội bộ Zero-Trust)
+* **Cập nhật gần nhất**: 17/06/2026
 
 ---
 
@@ -23,7 +23,7 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 
 ### 🟡 Giai đoạn 2: Tích hợp Lưới bảo mật Zero-Trust & Rate Limiting (Tháng 3-4)
 - [x] Viết Middleware xác thực Token JWT (`jsonwebtoken`)
-- [ ] Thiết lập cơ chế chữ ký nội bộ (Internal Signature) bằng mật mã Ed25519 (`ring`)
+- [/] Thiết lập cơ chế chữ ký nội bộ (Internal Signature) bằng mật mã Ed25519 (`ring`)
 - [ ] Xây dựng bộ lọc Rate Limiting cục bộ với thuật toán Token/Leaky Bucket sử dụng `moka`
 - [ ] Tích hợp `redis` để đồng bộ hóa Rate Limiting giữa các cụm Gateway
 - [ ] Thiết lập cơ chế tự động từ chối request xấu siêu tốc dưới 1.2ms
