@@ -6,8 +6,8 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 
 ## 📊 Trạng thái Hiện tại
 * **Giai đoạn Hiện tại**: Giai đoạn 2: Tích hợp Lưới bảo mật Zero-Trust & Rate Limiting (Tháng 3-4)
-* **Trạng thái**: 🟡 Đang thực hiện Giai đoạn 2 (Đang thiết lập cơ chế chữ ký nội bộ Zero-Trust)
-* **Cập nhật gần nhất**: 17/06/2026
+* **Trạng thái**: 🟡 Đang thực hiện Giai đoạn 2 (Đã hoàn thành module ký số Ed25519, đang tích hợp vào Proxy)
+* **Cập nhật gần nhất**: 18/06/2026
 
 ---
 

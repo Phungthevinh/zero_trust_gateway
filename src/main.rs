@@ -12,6 +12,7 @@ use std::sync::Arc;
 mod auth;
 mod config;
 mod proxy;
+mod signature;
 
 use proxy::{AppState, proxy_handler};
 
