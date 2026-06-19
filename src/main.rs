@@ -57,11 +57,24 @@ async fn main() {
             //khởi tạo decoding key
             let decoding_key = DecodingKey::from_rsa_pem(&public_key_pem).unwrap();
 
+            // Load Ed25519 private key cho Zero-Trust signing
+            let signing_key =
+                match signature::load_private_key(&config.security.zero_trust.private_key_path)
+                    .await
+                {
+                    Ok(key) => Arc::new(key),
+                    Err(e) => {
+                        tracing::error!("Lỗi khi đọc private key: {}", e);
+                        return;
+                    }
+                };
+
             // 1. Khởi tạo AppState dùng chung
             let state = AppState {
                 config: Arc::new(config.clone()),
                 client: reqwest::Client::new(),
                 jwt_decoding_key: Arc::new(decoding_key),
+                signing_key: signing_key,
             };
             // 2. Dựng Router và gắn State
             let app = Router::new()

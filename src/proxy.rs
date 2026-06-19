@@ -1,5 +1,6 @@
 use crate::auth;
 use crate::config::Config;
+use crate::signature;
 use axum::{
     body::Body,
     extract::State,
@@ -7,6 +8,7 @@ use axum::{
     response::IntoResponse,
 };
 use jsonwebtoken::DecodingKey;
+use ring::signature::Ed25519KeyPair;
 use std::sync::Arc;
 
 // Định nghĩa AppState chia sẻ dữ liệu giữa các luồng
@@ -15,6 +17,7 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub client: reqwest::Client,
     pub jwt_decoding_key: Arc<DecodingKey>,
+    pub signing_key: Arc<Ed25519KeyPair>,
 }
 
 // Handler nhận request và khớp route
@@ -83,6 +86,24 @@ pub async fn proxy_handler(State(state): State<AppState>, req: Request<Body>) ->
                 target_url = format!("{}?{}", target_url, query);
             }
 
+            // chuyển đổi Axum Body sang reqwest Body
+            // Đọc body từ Axum thành Bytes (giới hạn tối đa 10MB để tránh tấn công cạn kiệt bộ nhớ)
+            let body_bytes = match axum::body::to_bytes(body, 10 * 1024 * 1024).await {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    tracing::error!("Lỗi khi đọc request body: {:?}", e);
+                    return (StatusCode::BAD_REQUEST, "Không thể đọc request body").into_response();
+                }
+            };
+
+            let (signature_b64, timestamp) = signature::sign_request(
+                &state.signing_key,
+                parts.method.as_str(),
+                &target_path,
+                &body_bytes,
+            )
+            .await;
+
             // Khởi tạo request builder với Method và URL mới
             let mut upstream_req = state.client.request(parts.method, &target_url);
 
@@ -96,19 +117,16 @@ pub async fn proxy_handler(State(state): State<AppState>, req: Request<Body>) ->
                 }
             }
 
-            // chuyển đổi Axum Body sang reqwest Body
-            // Đọc body từ Axum thành Bytes (giới hạn tối đa 10MB để tránh tấn công cạn kiệt bộ nhớ)
-            let body_bytes = match axum::body::to_bytes(body, 10 * 1024 * 1024).await {
-                Ok(bytes) => bytes,
-                Err(e) => {
-                    tracing::error!("Lỗi khi đọc request body: {:?}", e);
-                    return (StatusCode::BAD_REQUEST, "Không thể đọc request body").into_response();
-                }
-            };
-
             // Chuyển đổi Bytes sang reqwest Body (đã được hỗ trợ sẵn)
             let reqwest_body = reqwest::Body::from(body_bytes);
-            let upstream_req = upstream_req.body(reqwest_body);
+            let mut upstream_req = upstream_req.body(reqwest_body);
+
+            upstream_req = upstream_req
+                .header(
+                    &state.config.security.zero_trust.signature_header,
+                    &signature_b64,
+                )
+                .header("X-Gateway-Timestamp", &timestamp);
 
             let response = match upstream_req.send().await {
                 Ok(res) => res,
@@ -247,11 +265,19 @@ mod tests {
             .expect("Không tìm thấy certs/jwt_public.pem. Vui lòng chạy lệnh sinh khóa trước.");
         let decoding_key = DecodingKey::from_rsa_pem(&public_key_pem).unwrap();
 
+        // Load Ed25519 signing key cho test
+        let signing_key = crate::signature::load_private_key("certs/gateway_private.pk8")
+            .await
+            .expect(
+                "Không tìm thấy certs/gateway_private.pk8. Vui lòng chạy lệnh sinh khóa trước.",
+            );
+
         // 3. Khởi tạo AppState và Router Gateway giả lập
         let state = AppState {
             config: Arc::new(config),
             client: reqwest::Client::new(),
             jwt_decoding_key: Arc::new(decoding_key),
+            signing_key: Arc::new(signing_key),
         };
 
         let app = Router::new().fallback(proxy_handler).with_state(state);
@@ -349,10 +375,16 @@ mod tests {
         let public_key_pem = std::fs::read("certs/jwt_public.pem").unwrap();
         let decoding_key = DecodingKey::from_rsa_pem(&public_key_pem).unwrap();
 
+        // Load Ed25519 signing key cho test
+        let signing_key = crate::signature::load_private_key("certs/gateway_private.pk8")
+            .await
+            .expect("Không tìm thấy certs/gateway_private.pk8");
+
         let state = AppState {
             config: Arc::new(config),
             client: reqwest::Client::new(),
             jwt_decoding_key: Arc::new(decoding_key),
+            signing_key: Arc::new(signing_key),
         };
 
         let app = Router::new().fallback(proxy_handler).with_state(state);
