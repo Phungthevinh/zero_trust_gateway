@@ -11,6 +11,8 @@ use jsonwebtoken::DecodingKey;
 use ring::signature::Ed25519KeyPair;
 use std::sync::Arc;
 
+use crate::rate_limit;
+
 // Định nghĩa AppState chia sẻ dữ liệu giữa các luồng
 #[derive(Clone)]
 pub struct AppState {
@@ -18,6 +20,7 @@ pub struct AppState {
     pub client: reqwest::Client,
     pub jwt_decoding_key: Arc<DecodingKey>,
     pub signing_key: Arc<Ed25519KeyPair>,
+    pub rate_limiter: Arc<rate_limit::RateLimiter>,
 }
 
 // Handler nhận request và khớp route
@@ -40,6 +43,13 @@ pub async fn proxy_handler(State(state): State<AppState>, req: Request<Body>) ->
                 route.path,
                 route.target
             );
+
+            // 1. Rate Limiting Check
+            let ip_key = "127.0.0.1"; // Tạm thời dùng IP tĩnh, sau này có thể lấy từ ConnectInfo
+            if !state.rate_limiter.check_request(ip_key).await {
+                tracing::warn!("Rate limit exceeded for IP: {}", ip_key);
+                return (StatusCode::TOO_MANY_REQUESTS, "Too Many Requests").into_response();
+            }
 
             if route.auth_required {
                 let token = auth::extract_token_from_header(&parts.headers);
@@ -273,11 +283,13 @@ mod tests {
             );
 
         // 3. Khởi tạo AppState và Router Gateway giả lập
+        let rate_limiter = Arc::new(crate::rate_limit::RateLimiter::new(100.0, 10.0, 1));
         let state = AppState {
             config: Arc::new(config),
             client: reqwest::Client::new(),
             jwt_decoding_key: Arc::new(decoding_key),
             signing_key: Arc::new(signing_key),
+            rate_limiter,
         };
 
         let app = Router::new().fallback(proxy_handler).with_state(state);
@@ -380,11 +392,13 @@ mod tests {
             .await
             .expect("Không tìm thấy certs/gateway_private.pk8");
 
+        let rate_limiter = Arc::new(crate::rate_limit::RateLimiter::new(100.0, 10.0, 1));
         let state = AppState {
             config: Arc::new(config),
             client: reqwest::Client::new(),
             jwt_decoding_key: Arc::new(decoding_key),
             signing_key: Arc::new(signing_key),
+            rate_limiter,
         };
 
         let app = Router::new().fallback(proxy_handler).with_state(state);

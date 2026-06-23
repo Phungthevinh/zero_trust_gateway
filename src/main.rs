@@ -12,6 +12,7 @@ use std::sync::Arc;
 mod auth;
 mod config;
 mod proxy;
+mod rate_limit;
 mod signature;
 
 use proxy::{AppState, proxy_handler};
@@ -69,12 +70,16 @@ async fn main() {
                     }
                 };
 
+            // Khởi tạo Rate Limiter cục bộ (ví dụ: tối đa 100 request/giây, hồi phục 10 req/s, TTL 60 giây)
+            let rate_limiter = Arc::new(rate_limit::RateLimiter::new(100.0, 10.0, 1));
+
             // 1. Khởi tạo AppState dùng chung
             let state = AppState {
                 config: Arc::new(config.clone()),
                 client: reqwest::Client::new(),
                 jwt_decoding_key: Arc::new(decoding_key),
                 signing_key: signing_key,
+                rate_limiter,
             };
             // 2. Dựng Router và gắn State
             let app = Router::new()
