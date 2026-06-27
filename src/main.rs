@@ -13,6 +13,7 @@ mod auth;
 mod config;
 mod proxy;
 mod rate_limit;
+mod redis_rate_limit;
 mod signature;
 
 use proxy::{AppState, proxy_handler};
