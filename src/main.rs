@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 mod auth;
 mod config;
+mod fast_reject;
 mod proxy;
 mod rate_limit;
 mod redis_rate_limit;

@@ -36,6 +36,7 @@ pub struct DatabaseConfig {
 pub struct SecurityConfig {
     pub jwt: JwtConfig,
     pub zero_trust: ZeroTrustConfig,
+    pub fast_reject: FastRejectConfig,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -48,6 +49,15 @@ pub struct JwtConfig {
 pub struct ZeroTrustConfig {
     pub private_key_path: String,
     pub signature_header: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FastRejectConfig {
+    pub ip_blacklist: Vec<String>,
+    pub blocked_paths: Vec<String>,
+    pub max_header_count: usize,
+    pub max_uri_length: usize,
+    pub max_body_size: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
