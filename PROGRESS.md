@@ -5,15 +5,15 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 ---
 
 ## 📊 Trạng thái Hiện tại
-* **Giai đoạn Hiện tại**: Giai đoạn 2: Tích hợp Lưới bảo mật Zero-Trust & Rate Limiting (Tháng 3-4)
-* **Trạng thái**: 🟡 Đang thực hiện Giai đoạn 2 (Đã hoàn thành tích hợp Redis Rate Limiting, tiếp theo: Cơ chế từ chối request xấu siêu tốc)
-* **Cập nhật gần nhất**: 28/06/2026
+* **Giai đoạn Hiện tại**: Giai đoạn 3: Tính năng Đột phá - AI-Native Gateway (Tháng 5)
+* **Trạng thái**: 🟢 Đã hoàn thành Giai đoạn 2 — Tiếp theo: AI-Native Gateway (Proxy AI, ONNX, Semantic Cache)
+* **Cập nhật gần nhất**: 08/07/2026
 
 ---
 
 ## 🗺️ Lộ trình Phát triển (Development Roadmap)
 
-### 🟡 Giai đoạn 1: Xây dựng Lõi hiệu năng (Core Engine) & Reverse Proxy (Tháng 1-2)
+### 🟢 Giai đoạn 1: Xây dựng Lõi hiệu năng (Core Engine) & Reverse Proxy (Tháng 1-2)
 - [x] Thiết lập cấu hình ban đầu và cài đặt thư viện cần thiết (`Cargo.toml`)
 - [x] Thiết kế và lập cấu trúc file cấu hình `config.yaml` cho Gateway
 - [x] Viết struct và bộ đọc cấu hình trong `src/config.rs`
@@ -21,14 +21,14 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 - [x] Triển khai Reverse Proxy Middleware chuyển tiếp request sang cổng dịch vụ Upstream
 - [x] Kiểm tra tối ưu hóa rò rỉ bộ nhớ (memory leaks) và đo đạc hiệu năng cơ bản
 
-### 🟡 Giai đoạn 2: Tích hợp Lưới bảo mật Zero-Trust & Rate Limiting (Tháng 3-4)
+### 🟢 Giai đoạn 2: Tích hợp Lưới bảo mật Zero-Trust & Rate Limiting (Tháng 3-4)
 - [x] Viết Middleware xác thực Token JWT (`jsonwebtoken`)
 - [x] Thiết lập cơ chế chữ ký nội bộ (Internal Signature) bằng mật mã Ed25519 (`ring`)
 - [x] Xây dựng bộ lọc Rate Limiting cục bộ với thuật toán Token/Leaky Bucket sử dụng `moka`
 - [x] Tích hợp `redis` để đồng bộ hóa Rate Limiting giữa các cụm Gateway
-- [ ] Thiết lập cơ chế tự động từ chối request xấu siêu tốc dưới 1.2ms
+- [x] Thiết lập cơ chế tự động từ chối request xấu siêu tốc dưới 1.2ms (`FastRejectFilter`)
 
-### ⚪ Giai đoạn 3: Tính năng Đột phá - AI-Native Gateway (Tháng 5)
+### 🟡 Giai đoạn 3: Tính năng Đột phá - AI-Native Gateway (Tháng 5)
 - [ ] Tạo Proxy phân phối và điều phối lưu lượng truy cập AI
 - [ ] Tích hợp mô hình AI ONNX nhúng cục bộ thông qua `tract-onnx`
 - [ ] Xây dựng Vector Cache trong bộ nhớ để triển khai cơ chế Semantic Cache (tiết kiệm chi phí gọi LLM)
