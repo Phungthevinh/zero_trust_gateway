@@ -1,6 +1,6 @@
-use crate::auth;
 use crate::config::Config;
 use crate::signature;
+use crate::{auth, fast_reject};
 use axum::{
     body::Body,
     extract::State,
@@ -21,6 +21,7 @@ pub struct AppState {
     pub jwt_decoding_key: Arc<DecodingKey>,
     pub signing_key: Arc<Ed25519KeyPair>,
     pub rate_limiter: Arc<rate_limit::RateLimiter>,
+    pub fast_reject: Arc<fast_reject::FastRejectFilter>,
 }
 
 // Handler nhận request và khớp route
@@ -28,6 +29,12 @@ pub async fn proxy_handler(State(state): State<AppState>, req: Request<Body>) ->
     let (parts, body) = req.into_parts();
 
     let path = parts.uri.path();
+
+    // 1. Fast Reject Check
+    if let Err(e) = state.fast_reject.check_request(&parts) {
+        tracing::warn!("Fast reject: {}", e);
+        return (StatusCode::BAD_REQUEST, e.to_string()).into_response();
+    }
 
     // Duyệt qua danh sách routes để tìm route khớp
     let matched_route = state
@@ -187,8 +194,8 @@ pub async fn proxy_handler(State(state): State<AppState>, req: Request<Body>) ->
 mod tests {
     use super::*;
     use crate::config::{
-        AiNativeConfig, DatabaseConfig, JwtConfig, RouteConfig, SecurityConfig, ServerConfig,
-        ZeroTrustConfig,
+        AiNativeConfig, DatabaseConfig, FastRejectConfig, JwtConfig, RouteConfig, SecurityConfig,
+        ServerConfig, ZeroTrustConfig,
     };
     use axum::{Router, routing::get};
     use jsonwebtoken::{EncodingKey, Header, encode};
@@ -254,6 +261,13 @@ mod tests {
                     private_key_path: "certs/gateway_private.pem".to_string(),
                     signature_header: "X-Gateway-Signature".to_string(),
                 },
+                fast_reject: FastRejectConfig {
+                    max_header_count: 50,
+                    max_uri_length: 2048,
+                    max_body_size: 10 * 1024 * 1024,
+                    blocked_paths: vec![],
+                    ip_blacklist: vec![],
+                },
             },
             ai_native: AiNativeConfig {
                 model_path: "models/all-MiniLM-L6-v2.onnx".to_string(),
@@ -284,12 +298,14 @@ mod tests {
 
         // 3. Khởi tạo AppState và Router Gateway giả lập
         let rate_limiter = Arc::new(crate::rate_limit::RateLimiter::new(100.0, 10.0, 1));
+        let fast_reject = Arc::new(crate::fast_reject::FastRejectFilter::new(&config));
         let state = AppState {
             config: Arc::new(config),
             client: reqwest::Client::new(),
             jwt_decoding_key: Arc::new(decoding_key),
             signing_key: Arc::new(signing_key),
             rate_limiter,
+            fast_reject,
         };
 
         let app = Router::new().fallback(proxy_handler).with_state(state);
@@ -368,6 +384,13 @@ mod tests {
                     private_key_path: "certs/gateway_private.pem".to_string(),
                     signature_header: "X-Gateway-Signature".to_string(),
                 },
+                fast_reject: FastRejectConfig {
+                    max_header_count: 50,
+                    max_uri_length: 2048,
+                    max_body_size: 10 * 1024 * 1024,
+                    blocked_paths: vec![],
+                    ip_blacklist: vec![],
+                },
             },
             ai_native: AiNativeConfig {
                 model_path: "models/all-MiniLM-L6-v2.onnx".to_string(),
@@ -393,12 +416,14 @@ mod tests {
             .expect("Không tìm thấy certs/gateway_private.pk8");
 
         let rate_limiter = Arc::new(crate::rate_limit::RateLimiter::new(100.0, 10.0, 1));
+        let fast_reject = Arc::new(crate::fast_reject::FastRejectFilter::new(&config));
         let state = AppState {
             config: Arc::new(config),
             client: reqwest::Client::new(),
             jwt_decoding_key: Arc::new(decoding_key),
             signing_key: Arc::new(signing_key),
             rate_limiter,
+            fast_reject,
         };
 
         let app = Router::new().fallback(proxy_handler).with_state(state);

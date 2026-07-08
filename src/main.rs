@@ -17,6 +17,7 @@ mod rate_limit;
 mod redis_rate_limit;
 mod signature;
 
+use crate::fast_reject::FastRejectFilter;
 use proxy::{AppState, proxy_handler};
 
 #[tokio::main]
@@ -47,6 +48,9 @@ async fn main() {
             println!("- AI Native Cache TTL: {}", config.ai_native.cache_ttl);
             println!("- Routes: {:#?}", config.routes);
             println!("--------------------------------------------------");
+
+            //khởi tạo fast_reject
+            let fast_reject = Arc::new(FastRejectFilter::new(&config));
 
             //khởi tạo public key
             let public_key_pem = match std::fs::read(&config.security.jwt.secret_key_path) {
@@ -82,6 +86,7 @@ async fn main() {
                 jwt_decoding_key: Arc::new(decoding_key),
                 signing_key: signing_key,
                 rate_limiter,
+                fast_reject: fast_reject,
             };
             // 2. Dựng Router và gắn State
             let app = Router::new()
