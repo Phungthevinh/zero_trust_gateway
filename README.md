@@ -130,6 +130,22 @@ Hệ thống tích hợp sẵn kịch bản kiểm thử đo đạc hiệu năng
   * **Tỉ lệ thành công**: 100% (HTTP 200 OK).
   * **Tổng thời gian hoàn thành**: **7.69s**.
 
+### 6. Tải mô hình AI (AI Model Setup)
+Để sử dụng tính năng AI-Native (Semantic Cache), cần tải mô hình ONNX embedding:
+```bash
+# Tạo thư mục chứa model (chạy từ thư mục gốc của repository)
+mkdir -p models
+
+# Tải mô hình all-MiniLM-L6-v2 (~86MB)
+curl -L -o models/all-MiniLM-L6-v2.onnx https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx
+```
+
+**Kết quả kiểm thử AI Embedding Engine:**
+* **Kích thước vector đầu ra**: 384 chiều
+* **Cosine Similarity** (2 câu giống ý nghĩa): **0.9907** (99%)
+* **Cosine Similarity** (2 câu khác ý nghĩa): **0.8951** (89%)
+* **Thời gian xử lý** (load model + embed 3 câu): **~0.65 giây** (chế độ Release)
+
 ---
 
 

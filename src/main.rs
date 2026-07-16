@@ -9,6 +9,7 @@ use config::Config;
 use jsonwebtoken::DecodingKey;
 use std::sync::Arc;
 
+mod ai_engine;
 mod auth;
 mod config;
 mod fast_reject;

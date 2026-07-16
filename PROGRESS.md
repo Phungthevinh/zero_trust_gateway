@@ -6,8 +6,8 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 
 ## 📊 Trạng thái Hiện tại
 * **Giai đoạn Hiện tại**: Giai đoạn 3: Tính năng Đột phá - AI-Native Gateway (Tháng 5)
-* **Trạng thái**: 🟢 Đã hoàn thành Giai đoạn 2 — Tiếp theo: AI-Native Gateway (Proxy AI, ONNX, Semantic Cache)
-* **Cập nhật gần nhất**: 08/07/2026
+* **Trạng thái**: 🟡 Đang thực hiện Giai đoạn 3 — Đã hoàn thành AI Embedding Engine (ONNX), tiếp theo: Semantic Cache
+* **Cập nhật gần nhất**: 17/07/2026
 
 ---
 
@@ -29,9 +29,9 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 - [x] Thiết lập cơ chế tự động từ chối request xấu siêu tốc dưới 1.2ms (`FastRejectFilter`)
 
 ### 🟡 Giai đoạn 3: Tính năng Đột phá - AI-Native Gateway (Tháng 5)
-- [ ] Tạo Proxy phân phối và điều phối lưu lượng truy cập AI
-- [ ] Tích hợp mô hình AI ONNX nhúng cục bộ thông qua `tract-onnx`
+- [x] Xây dựng AI Embedding Engine (`src/ai_engine.rs`) sử dụng `tract-onnx` để chạy mô hình `all-MiniLM-L6-v2` nhúng cục bộ, chuyển đổi text thành vector 384 chiều với Mean Pooling & L2 Normalization (Cosine Similarity A vs B đạt 0.99)
 - [ ] Xây dựng Vector Cache trong bộ nhớ để triển khai cơ chế Semantic Cache (tiết kiệm chi phí gọi LLM)
+- [ ] Tạo Proxy phân phối và điều phối lưu lượng truy cập AI
 - [ ] Tối ưu hóa bộ nhớ đệm và parse giao thức MCP (Model Context Protocol)
 
 ### ⚪ Giai đoạn 4: Thiết kế Giao diện quản trị (UI) & Đóng gói (Tháng 6)

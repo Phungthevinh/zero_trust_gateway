@@ -3,3 +3,4 @@ certs/
 *.pem
 *.key
 config.yaml
+models/
