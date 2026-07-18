@@ -6,8 +6,8 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 
 ## 📊 Trạng thái Hiện tại
 * **Giai đoạn Hiện tại**: Giai đoạn 3: Tính năng Đột phá - AI-Native Gateway (Tháng 5)
-* **Trạng thái**: 🟡 Đang thực hiện Giai đoạn 3 — Đã hoàn thành AI Embedding Engine (ONNX), tiếp theo: Semantic Cache
-* **Cập nhật gần nhất**: 17/07/2026
+* **Trạng thái**: 🟡 Đang thực hiện Giai đoạn 3 — Semantic Cache đang triển khai (struct + lookup + cosine_similarity ✅, insert + cleanup + tests ⏳)
+* **Cập nhật gần nhất**: 18/07/2026
 
 ---
 
@@ -30,7 +30,7 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 
 ### 🟡 Giai đoạn 3: Tính năng Đột phá - AI-Native Gateway (Tháng 5)
 - [x] Xây dựng AI Embedding Engine (`src/ai_engine.rs`) sử dụng `tract-onnx` để chạy mô hình `all-MiniLM-L6-v2` nhúng cục bộ, chuyển đổi text thành vector 384 chiều với Mean Pooling & L2 Normalization (Cosine Similarity A vs B đạt 0.99)
-- [ ] Xây dựng Vector Cache trong bộ nhớ để triển khai cơ chế Semantic Cache (tiết kiệm chi phí gọi LLM)
+- [/] Xây dựng Vector Cache trong bộ nhớ để triển khai cơ chế Semantic Cache (`src/semantic_cache.rs`) — Đã hoàn thành: `CacheEntry`, `SemanticCache` struct, `new()`, `cosine_similarity()`, `lookup()` (với TTL check + best-match). Còn lại: `insert()`, `cleanup_expired()`, unit tests
 - [ ] Tạo Proxy phân phối và điều phối lưu lượng truy cập AI
 - [ ] Tối ưu hóa bộ nhớ đệm và parse giao thức MCP (Model Context Protocol)
 
