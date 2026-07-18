@@ -16,8 +16,8 @@ mod fast_reject;
 mod proxy;
 mod rate_limit;
 mod redis_rate_limit;
+mod semantic_cache;
 mod signature;
-
 use crate::fast_reject::FastRejectFilter;
 use proxy::{AppState, proxy_handler};
 
