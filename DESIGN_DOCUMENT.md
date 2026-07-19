@@ -68,7 +68,7 @@ Xây dựng một API Gateway đa tầng bảo mật với:
 | FR-05 | Rate Limiting phân tán | Đồng bộ giới hạn request giữa nhiều cụm Gateway qua Redis (Sliding Window) | ✅ Hoàn thành |
 | FR-06 | Fast Reject Filter | Từ chối siêu nhanh (<1.2ms) các request xấu/nghi ngờ trước khi đi vào pipeline chính | ✅ Hoàn thành |
 | FR-07 | AI Embedding Engine | Chạy mô hình ONNX (`all-MiniLM-L6-v2`) cục bộ để chuyển đổi text → vector 384 chiều | ✅ Hoàn thành |
-| FR-08 | Semantic Cache | Bộ đệm ngữ nghĩa tìm kiếm câu hỏi tương tự bằng cosine similarity, tái sử dụng LLM response | 🔄 Đang phát triển |
+| FR-08 | Semantic Cache | Bộ đệm ngữ nghĩa tìm kiếm câu hỏi tương tự bằng cosine similarity, tái sử dụng LLM response | ✅ Hoàn thành |
 | FR-09 | AI Traffic Proxy | Proxy điều phối lưu lượng truy cập tới các dịch vụ AI (OpenAI, Gemini) | ⏳ Chưa bắt đầu |
 | FR-10 | Web Dashboard | Giao diện quản trị hiển thị traffic, biểu đồ thời gian thực | ⏳ Chưa bắt đầu |
 
