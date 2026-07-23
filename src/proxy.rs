@@ -12,6 +12,7 @@ use ring::signature::Ed25519KeyPair;
 use std::sync::Arc;
 
 use crate::rate_limit;
+use crate::semantic_cache::SemanticCache;
 
 // Định nghĩa AppState chia sẻ dữ liệu giữa các luồng
 #[derive(Clone)]
@@ -22,6 +23,7 @@ pub struct AppState {
     pub signing_key: Arc<Ed25519KeyPair>,
     pub rate_limiter: Arc<rate_limit::RateLimiter>,
     pub fast_reject: Arc<fast_reject::FastRejectFilter>,
+    pub semantic_cache: Option<Arc<SemanticCache>>,
 }
 
 // Handler nhận request và khớp route
@@ -297,7 +299,7 @@ mod tests {
             );
 
         // 3. Khởi tạo AppState và Router Gateway giả lập
-        let rate_limiter = Arc::new(crate::rate_limit::RateLimiter::new(100.0, 10.0, 1));
+        let rate_limiter = Arc::new(crate::rate_limit::RateLimiter::new(100000.0, 100000.0, 1));
         let fast_reject = Arc::new(crate::fast_reject::FastRejectFilter::new(&config));
         let state = AppState {
             config: Arc::new(config),
@@ -306,6 +308,7 @@ mod tests {
             signing_key: Arc::new(signing_key),
             rate_limiter,
             fast_reject,
+            semantic_cache: None,
         };
 
         let app = Router::new().fallback(proxy_handler).with_state(state);
@@ -316,6 +319,7 @@ mod tests {
         // Thực hiện cuộc gọi khởi động (warm-up) để nạp bộ nhớ đệm kết nối
         let req = Request::builder()
             .uri("/api/test/target-path")
+            .header("Host", "localhost")
             .body(Body::empty())
             .unwrap();
         let _response = app.clone().oneshot(req).await.unwrap();
@@ -326,6 +330,7 @@ mod tests {
         for _ in 0..iterations {
             let req = Request::builder()
                 .uri("/api/test/target-path")
+                .header("Host", "localhost")
                 .body(Body::empty())
                 .unwrap();
 
@@ -424,6 +429,7 @@ mod tests {
             signing_key: Arc::new(signing_key),
             rate_limiter,
             fast_reject,
+            semantic_cache: None,
         };
 
         let app = Router::new().fallback(proxy_handler).with_state(state);
@@ -432,6 +438,7 @@ mod tests {
         // --- CASE 1: Request không gửi Token -> Bị chặn 401 ---
         let req = Request::builder()
             .uri("/api/secure/secure-data")
+            .header("Host", "localhost")
             .body(Body::empty())
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
@@ -440,6 +447,7 @@ mod tests {
         // --- CASE 2: Request gửi Token sai/hỏng -> Bị chặn 401 ---
         let req = Request::builder()
             .uri("/api/secure/secure-data")
+            .header("Host", "localhost")
             .header("Authorization", "Bearer invalid-token-xyz")
             .body(Body::empty())
             .unwrap();
@@ -450,6 +458,7 @@ mod tests {
         let valid_token = generate_test_token();
         let req = Request::builder()
             .uri("/api/secure/secure-data")
+            .header("Host", "localhost")
             .header("Authorization", format!("Bearer {}", valid_token))
             .body(Body::empty())
             .unwrap();

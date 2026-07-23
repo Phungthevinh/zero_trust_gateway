@@ -18,7 +18,7 @@ mod rate_limit;
 mod redis_rate_limit;
 mod semantic_cache;
 mod signature;
-use crate::fast_reject::FastRejectFilter;
+use crate::{ai_engine::AiEngine, fast_reject::FastRejectFilter, semantic_cache::SemanticCache};
 use proxy::{AppState, proxy_handler};
 
 #[tokio::main]
@@ -79,6 +79,20 @@ async fn main() {
 
             // Khởi tạo Rate Limiter cục bộ (ví dụ: tối đa 100 request/giây, hồi phục 10 req/s, TTL 60 giây)
             let rate_limiter = Arc::new(rate_limit::RateLimiter::new(100.0, 10.0, 1));
+            let semantic_cache = match AiEngine::new(&config.ai_native.model_path) {
+                Ok(ai_engine) => {
+                    let cache = SemanticCache::new(
+                        Arc::new(ai_engine),
+                        config.ai_native.similarity_threshold,
+                        config.ai_native.cache_ttl,
+                    );
+                    Some(Arc::new(cache))
+                }
+                Err(e) => {
+                    tracing::warn!("Không thể khởi tạo Semantic Cache: {:?}", e);
+                    None
+                }
+            };
 
             // 1. Khởi tạo AppState dùng chung
             let state = AppState {
@@ -88,6 +102,7 @@ async fn main() {
                 signing_key: signing_key,
                 rate_limiter,
                 fast_reject: fast_reject,
+                semantic_cache: semantic_cache,
             };
             // 2. Dựng Router và gắn State
             let app = Router::new()

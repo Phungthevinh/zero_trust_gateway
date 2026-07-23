@@ -6,8 +6,8 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 
 ## 📊 Trạng thái Hiện tại
 * **Giai đoạn Hiện tại**: Giai đoạn 3: Tính năng Đột phá - AI-Native Gateway (Tháng 5)
-* **Trạng thái**: 🟡 Đang thực hiện Giai đoạn 3 — Semantic Cache đã hoàn thành ✅, tiếp theo: AI Proxy Dispatcher
-* **Cập nhật gần nhất**: 19/07/2026
+* **Trạng thái**: 🟡 Đang thực hiện Giai đoạn 3 — Semantic Cache đã tích hợp vào AppState ✅, tiếp theo: AI Proxy Dispatcher Logic trong proxy_handler
+* **Cập nhật gần nhất**: 23/07/2026
 
 ---
 
@@ -31,7 +31,8 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 ### 🟡 Giai đoạn 3: Tính năng Đột phá - AI-Native Gateway (Tháng 5)
 - [x] Xây dựng AI Embedding Engine (`src/ai_engine.rs`) sử dụng `tract-onnx` để chạy mô hình `all-MiniLM-L6-v2` nhúng cục bộ, chuyển đổi text thành vector 384 chiều với Mean Pooling & L2 Normalization (Cosine Similarity A vs B đạt 0.99)
 - [x] Xây dựng Vector Cache trong bộ nhớ để triển khai cơ chế Semantic Cache (`src/semantic_cache.rs`) — Bao gồm: `CacheEntry` struct, `SemanticCache` struct với `RwLock<Vec>`, `new()`, `cosine_similarity()` (dot product cho L2-normalized vectors), `lookup()` (TTL check + best-match), `insert()` (embed + retain cleanup + push), `cleanup_expired()`. Unit test PASS: Cache HIT (câu tương đồng) + Cache MISS (TTL expired)
-- [ ] Tạo Proxy phân phối và điều phối lưu lượng truy cập AI
+- [x] Tích hợp `AiEngine` + `SemanticCache` vào `AppState` (Dependency Injection) trong `main.rs` — Khởi tạo Graceful Degradation: nếu model ONNX không nạp được thì Gateway vẫn hoạt động bình thường với `semantic_cache = None`. Cập nhật toàn bộ Unit Test trong `proxy.rs` (thêm `semantic_cache: None`, sửa `Host` header cho FastReject, nâng capacity RateLimiter cho latency test). Tất cả 4/4 test PASS ✅
+- [ ] Tạo Proxy phân phối và điều phối lưu lượng truy cập AI (AI Traffic Branching trong `proxy_handler`)
 - [ ] Tối ưu hóa bộ nhớ đệm và parse giao thức MCP (Model Context Protocol)
 
 ### ⚪ Giai đoạn 4: Thiết kế Giao diện quản trị (UI) & Đóng gói (Tháng 6)
