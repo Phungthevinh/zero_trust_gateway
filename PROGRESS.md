@@ -32,7 +32,7 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 - [x] Xây dựng AI Embedding Engine (`src/ai_engine.rs`) sử dụng `tract-onnx` để chạy mô hình `all-MiniLM-L6-v2` nhúng cục bộ, chuyển đổi text thành vector 384 chiều với Mean Pooling & L2 Normalization (Cosine Similarity A vs B đạt 0.99)
 - [x] Xây dựng Vector Cache trong bộ nhớ để triển khai cơ chế Semantic Cache (`src/semantic_cache.rs`) — Bao gồm: `CacheEntry` struct, `SemanticCache` struct với `RwLock<Vec>`, `new()`, `cosine_similarity()` (dot product cho L2-normalized vectors), `lookup()` (TTL check + best-match), `insert()` (embed + retain cleanup + push), `cleanup_expired()`. Unit test PASS: Cache HIT (câu tương đồng) + Cache MISS (TTL expired)
 - [x] Tích hợp `AiEngine` + `SemanticCache` vào `AppState` (Dependency Injection) trong `main.rs` — Khởi tạo Graceful Degradation: nếu model ONNX không nạp được thì Gateway vẫn hoạt động bình thường với `semantic_cache = None`. Cập nhật toàn bộ Unit Test trong `proxy.rs` (thêm `semantic_cache: None`, sửa `Host` header cho FastReject, nâng capacity RateLimiter cho latency test). Tất cả 4/4 test PASS ✅
-- [ ] Tạo Proxy phân phối và điều phối lưu lượng truy cập AI (AI Traffic Branching trong `proxy_handler`)
+- [x] Tạo Proxy phân phối và điều phối lưu lượng truy cập AI (AI Traffic Branching trong `proxy_handler`)
 - [ ] Tối ưu hóa bộ nhớ đệm và parse giao thức MCP (Model Context Protocol)
 
 ### ⚪ Giai đoạn 4: Thiết kế Giao diện quản trị (UI) & Đóng gói (Tháng 6)

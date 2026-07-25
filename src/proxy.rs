@@ -115,6 +115,12 @@ pub async fn proxy_handler(State(state): State<AppState>, req: Request<Body>) ->
                 }
             };
 
+            if route.ai_caching == Some(true) && state.semantic_cache.is_some() {
+                return handle_ai_request(state, parts, body_bytes, target_url)
+                    .await
+                    .into_response();
+            }
+
             let (signature_b64, timestamp) = signature::sign_request(
                 &state.signing_key,
                 parts.method.as_str(),
@@ -190,6 +196,114 @@ pub async fn proxy_handler(State(state): State<AppState>, req: Request<Body>) ->
                 .into_response()
         }
     }
+}
+
+async fn handle_ai_request(
+    state: AppState,
+    parts: axum::http::request::Parts,
+    body_bytes: axum::body::Bytes,
+    target_url: String,
+) -> Response<Body> {
+    let json_body: serde_json::Value = match serde_json::from_slice(&body_bytes) {
+        Ok(val) => val,
+        Err(_) => return (StatusCode::BAD_REQUEST, "Invalid JSON body").into_response(),
+    };
+
+    let prompt = json_body
+        .get("messages")
+        .and_then(|m| m.as_array())
+        .and_then(|arr| {
+            arr.iter()
+                .rev()
+                .find(|msg| msg.get("role").and_then(|r| r.as_str()) == Some("user"))
+        })
+        .and_then(|msg| msg.get("content").and_then(|c| c.as_str()));
+
+    let prompt = match prompt {
+        Some(p) => p,
+        None => {
+            return (StatusCode::BAD_REQUEST, "Missing user prompt in messages").into_response();
+        }
+    };
+
+    // 1. Lấy semantic cache từ AppState
+    let cache = state.semantic_cache.as_ref().unwrap();
+
+    // 2. Tra cứu prompt trong cache
+    if let Some(cached_response) = cache.lookup(prompt) {
+        tracing::info!("Semantic Cache HIT cho prompt: {}", prompt);
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/json")
+            .header("X-Cache", "HIT")
+            .body(Body::from(cached_response))
+            .unwrap();
+    }
+
+    let mut upstream_req = state.client.request(parts.method.clone(), &target_url);
+
+    // 2. Lặp qua tất cả Headers của Client gửi lên, copy sang Request mới
+    for (header_name, header_value) in parts.headers.iter() {
+        if header_name != axum::http::header::HOST {
+            // Bỏ qua Host vì reqwest sẽ tự điền Host mới
+            upstream_req = upstream_req.header(header_name, header_value.clone());
+        }
+    }
+
+    // 3. Đính kèm nguyên cái Body gốc vào
+    let reqwest_body = reqwest::Body::from(body_bytes.clone()); // body_bytes đã có sẵn ở tham số hàm
+    upstream_req = upstream_req.body(reqwest_body);
+
+    let response = match upstream_req.send().await {
+        Ok(res) => res,
+        Err(e) => {
+            tracing::error!("Lỗi khi gửi request đến upstream: {:?}", e);
+            return (
+                StatusCode::BAD_GATEWAY,
+                format!("Lỗi kết nối upstream: {}", e),
+            )
+                .into_response();
+        }
+    };
+
+    let status = response.status();
+    let res_bytes = match response.bytes().await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            tracing::error!("Lỗi khi đọc response từ upstream: {:?}", e);
+            return (
+                StatusCode::BAD_GATEWAY,
+                format!("Lỗi đọc response từ upstream: {}", e),
+            )
+                .into_response();
+        }
+    };
+
+    // Parse res_bytes thành JSON
+    if let Ok(res_json) = serde_json::from_slice::<serde_json::Value>(&res_bytes) {
+        // Trích xuất chuỗi câu trả lời của AI
+        if let Some(ai_text) = res_json["choices"][0]["message"]["content"].as_str() {
+            // Lưu vào Semantic Cache!
+            cache.insert(prompt, ai_text.to_string());
+            tracing::info!(
+                "Đã lưu response của AI vào Semantic Cache cho prompt: {}",
+                prompt
+            );
+        }
+    }
+    Response::builder()
+        .status(status)
+        .header("Content-Type", "application/json")
+        .header("X-Cache", "MISS")
+        .body(Body::from(res_bytes))
+        .unwrap_or_else(|err| {
+            tracing::error!("Lỗi dựng response: {}", err);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Lỗi dựng response: {}", err),
+            )
+                .into_response()
+        })
 }
 
 #[cfg(test)]
@@ -470,5 +584,169 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(body_bytes, "Secret content");
+    }
+
+    #[tokio::test]
+    async fn test_ai_caching_flow() {
+        // 1. Khởi chạy Mock Upstream Server giả lập OpenAI
+        let mock_openai = Router::new().route(
+            "/v1/chat/completions",
+            axum::routing::post(|| async {
+                let mock_response = serde_json::json!({
+                    "id": "chatcmpl-123",
+                    "object": "chat.completion",
+                    "created": 1677652288,
+                    "model": "gpt-4o",
+                    "choices": [{
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "Đây là câu trả lời từ Upstream AI!"
+                        },
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {
+                        "prompt_tokens": 9,
+                        "completion_tokens": 12,
+                        "total_tokens": 21
+                    }
+                });
+                axum::Json(mock_response)
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, mock_openai).await.unwrap();
+        });
+
+        // 2. Thiết lập cấu hình Gateway trỏ tới Mock OpenAI
+        let target_url = format!("http://{}", upstream_addr);
+        let config = Config {
+            server: ServerConfig {
+                host: "127.0.0.1".to_string(),
+                port: 8080,
+                log_level: "info".to_string(),
+            },
+            database: DatabaseConfig {
+                redis_url: "redis://127.0.0.1:6379".to_string(),
+                connection_timeout: 5000,
+            },
+            security: SecurityConfig {
+                jwt: JwtConfig {
+                    secret_key_path: "certs/jwt_public.pem".to_string(),
+                    issuer: "test".to_string(),
+                },
+                zero_trust: ZeroTrustConfig {
+                    private_key_path: "certs/gateway_private.pem".to_string(),
+                    signature_header: "X-Gateway-Signature".to_string(),
+                },
+                fast_reject: FastRejectConfig {
+                    max_header_count: 50,
+                    max_uri_length: 2048,
+                    max_body_size: 10 * 1024 * 1024,
+                    blocked_paths: vec![],
+                    ip_blacklist: vec![],
+                },
+            },
+            ai_native: AiNativeConfig {
+                model_path: "models/all-MiniLM-L6-v2.onnx".to_string(),
+                similarity_threshold: 0.95,
+                cache_ttl: 3600,
+            },
+            routes: vec![RouteConfig {
+                path: "/api/ai".to_string(),
+                target: target_url,
+                strip_prefix: true,
+                auth_required: false,
+                rate_limit: None,
+                ai_caching: Some(true),
+            }],
+        };
+
+        // 3. Khởi tạo Semantic Cache
+        let engine = crate::ai_engine::AiEngine::new("../models/all-MiniLM-L6-v2.onnx")
+            .expect("Không thể nạp model ONNX.");
+        let ai_engine = Arc::new(engine);
+        let semantic_cache = Arc::new(SemanticCache::new(ai_engine, config.ai_native.similarity_threshold, config.ai_native.cache_ttl));
+
+        let public_key_pem = std::fs::read("certs/jwt_public.pem").unwrap();
+        let decoding_key = DecodingKey::from_rsa_pem(&public_key_pem).unwrap();
+        let signing_key = crate::signature::load_private_key("certs/gateway_private.pk8")
+            .await
+            .expect("Không tìm thấy certs/gateway_private.pk8");
+        let rate_limiter = Arc::new(crate::rate_limit::RateLimiter::new(100.0, 10.0, 1));
+        let fast_reject = Arc::new(crate::fast_reject::FastRejectFilter::new(&config));
+        
+        let state = AppState {
+            config: Arc::new(config),
+            client: reqwest::Client::new(),
+            jwt_decoding_key: Arc::new(decoding_key),
+            signing_key: Arc::new(signing_key),
+            rate_limiter,
+            fast_reject,
+            semantic_cache: Some(semantic_cache),
+        };
+
+        let app = Router::new().fallback(proxy_handler).with_state(state);
+        use tower::ServiceExt;
+
+        let payload = serde_json::json!({
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "Xin chào AI!"}]
+        });
+
+        // --- Lần 1: Cache MISS (Gọi Upstream) ---
+        let req1 = Request::builder()
+            .method("POST")
+            .uri("/api/ai/v1/chat/completions")
+            .header("Host", "localhost")
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_vec(&payload).unwrap()))
+            .unwrap();
+        
+        let start1 = std::time::Instant::now();
+        let res1 = app.clone().oneshot(req1).await.unwrap();
+        let duration1 = start1.elapsed();
+        
+        assert_eq!(res1.status(), StatusCode::OK);
+        assert_eq!(res1.headers().get("X-Cache").unwrap(), "MISS");
+        
+        let body_bytes1 = axum::body::to_bytes(res1.into_body(), 1024 * 1024).await.unwrap();
+        let res1_json: serde_json::Value = serde_json::from_slice(&body_bytes1).unwrap();
+        assert_eq!(res1_json["choices"][0]["message"]["content"], "Đây là câu trả lời từ Upstream AI!");
+
+        // --- Lần 2: Cache HIT (Cùng câu hỏi -> Đọc từ Semantic Cache) ---
+        let payload2 = serde_json::json!({
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "AI ơi, chào bạn!"}] // Câu hỏi tương đồng
+        });
+        
+        let req2 = Request::builder()
+            .method("POST")
+            .uri("/api/ai/v1/chat/completions")
+            .header("Host", "localhost")
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_vec(&payload2).unwrap()))
+            .unwrap();
+        
+        let start2 = std::time::Instant::now();
+        let res2 = app.clone().oneshot(req2).await.unwrap();
+        let duration2 = start2.elapsed();
+        
+        assert_eq!(res2.status(), StatusCode::OK);
+        assert_eq!(res2.headers().get("X-Cache").unwrap(), "HIT");
+        
+        let body_bytes2 = axum::body::to_bytes(res2.into_body(), 1024 * 1024).await.unwrap();
+        // Cấu trúc trả về từ HIT Cache hiện tại là Raw String từ Cache, hoặc bạn đã bọc nó lại.
+        // CacheHIT lúc trước trả về string gốc
+        let hit_text = String::from_utf8(body_bytes2.to_vec()).unwrap();
+        assert_eq!(hit_text, "Đây là câu trả lời từ Upstream AI!");
+
+        println!("\n==============================================");
+        println!("🚀 KẾT QUẢ ĐO LƯỜNG SEMANTIC CACHE");
+        println!("- Lần 1 (Cache MISS -> Upstream): {:?}", duration1);
+        println!("- Lần 2 (Cache HIT -> Local): {:?}", duration2);
+        println!("==============================================\n");
     }
 }
