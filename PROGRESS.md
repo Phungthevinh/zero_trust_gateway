@@ -27,6 +27,7 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 - [x] Xây dựng bộ lọc Rate Limiting cục bộ với thuật toán Token/Leaky Bucket sử dụng `moka`
 - [x] Tích hợp `redis` để đồng bộ hóa Rate Limiting giữa các cụm Gateway
 - [x] Thiết lập cơ chế tự động từ chối request xấu siêu tốc dưới 1.2ms (`FastRejectFilter`)
+- [x] Triển khai cơ chế xác định Client IP an toàn với `Trusted Proxies` chống IP Spoofing cho Rate Limiter
 
 ### 🟡 Giai đoạn 3: Tính năng Đột phá - AI-Native Gateway (Tháng 5)
 - [x] Xây dựng AI Embedding Engine (`src/ai_engine.rs`) sử dụng `tract-onnx` để chạy mô hình `all-MiniLM-L6-v2` nhúng cục bộ, chuyển đổi text thành vector 384 chiều với Mean Pooling & L2 Normalization (Cosine Similarity A vs B đạt 0.99)

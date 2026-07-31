@@ -3,12 +3,14 @@ use crate::signature;
 use crate::{auth, fast_reject};
 use axum::{
     body::Body,
-    extract::State,
-    http::{Request, Response, StatusCode},
+    extract::{ConnectInfo, State},
+    http::{HeaderMap, Request, Response, StatusCode},
     response::IntoResponse,
 };
 use jsonwebtoken::DecodingKey;
 use ring::signature::Ed25519KeyPair;
+use serde::de::value;
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use crate::rate_limit;
@@ -27,7 +29,11 @@ pub struct AppState {
 }
 
 // Handler nhận request và khớp route
-pub async fn proxy_handler(State(state): State<AppState>, req: Request<Body>) -> impl IntoResponse {
+pub async fn proxy_handler(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    req: Request<Body>,
+) -> impl IntoResponse {
     let (parts, body) = req.into_parts();
 
     let path = parts.uri.path();
@@ -54,8 +60,8 @@ pub async fn proxy_handler(State(state): State<AppState>, req: Request<Body>) ->
             );
 
             // 1. Rate Limiting Check
-            let ip_key = "127.0.0.1"; // Tạm thời dùng IP tĩnh, sau này có thể lấy từ ConnectInfo
-            if !state.rate_limiter.check_request(ip_key).await {
+            let ip_key = get_client_ip(addr, &parts.headers, &state.config.security.trusted_proxies);
+            if !state.rate_limiter.check_request(&ip_key).await {
                 tracing::warn!("Rate limit exceeded for IP: {}", ip_key);
                 return (StatusCode::TOO_MANY_REQUESTS, "Too Many Requests").into_response();
             }
@@ -304,6 +310,32 @@ async fn handle_ai_request(
             )
                 .into_response()
         })
+}
+
+fn get_client_ip(
+    IpAddr: SocketAddr,
+    headers: &HeaderMap,
+    trusted_proxies: &Vec<ipnetwork::IpNetwork>,
+) -> String {
+    //trích xuất IPAddr từ soketAddr
+    let tcp_ip = IpAddr.ip();
+    if trusted_proxies
+        .iter()
+        .any(|network| network.contains(tcp_ip))
+    {
+        let forwarded = headers
+            .get("X-Forwarded-For")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|s| s.split(',').next())
+            .ok_or_else(|| "Không tìm thấy header X-Forwarded-For");
+
+        return match forwarded {
+            Ok(ip) => ip.to_string(),
+            Err(_) => tcp_ip.to_string(),
+        };
+    }
+
+    tcp_ip.to_string()
 }
 
 #[cfg(test)]
@@ -668,7 +700,11 @@ mod tests {
         let engine = crate::ai_engine::AiEngine::new("../models/all-MiniLM-L6-v2.onnx")
             .expect("Không thể nạp model ONNX.");
         let ai_engine = Arc::new(engine);
-        let semantic_cache = Arc::new(SemanticCache::new(ai_engine, config.ai_native.similarity_threshold, config.ai_native.cache_ttl));
+        let semantic_cache = Arc::new(SemanticCache::new(
+            ai_engine,
+            config.ai_native.similarity_threshold,
+            config.ai_native.cache_ttl,
+        ));
 
         let public_key_pem = std::fs::read("certs/jwt_public.pem").unwrap();
         let decoding_key = DecodingKey::from_rsa_pem(&public_key_pem).unwrap();
@@ -677,7 +713,7 @@ mod tests {
             .expect("Không tìm thấy certs/gateway_private.pk8");
         let rate_limiter = Arc::new(crate::rate_limit::RateLimiter::new(100.0, 10.0, 1));
         let fast_reject = Arc::new(crate::fast_reject::FastRejectFilter::new(&config));
-        
+
         let state = AppState {
             config: Arc::new(config),
             client: reqwest::Client::new(),
@@ -704,24 +740,29 @@ mod tests {
             .header("Content-Type", "application/json")
             .body(Body::from(serde_json::to_vec(&payload).unwrap()))
             .unwrap();
-        
+
         let start1 = std::time::Instant::now();
         let res1 = app.clone().oneshot(req1).await.unwrap();
         let duration1 = start1.elapsed();
-        
+
         assert_eq!(res1.status(), StatusCode::OK);
         assert_eq!(res1.headers().get("X-Cache").unwrap(), "MISS");
-        
-        let body_bytes1 = axum::body::to_bytes(res1.into_body(), 1024 * 1024).await.unwrap();
+
+        let body_bytes1 = axum::body::to_bytes(res1.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let res1_json: serde_json::Value = serde_json::from_slice(&body_bytes1).unwrap();
-        assert_eq!(res1_json["choices"][0]["message"]["content"], "Đây là câu trả lời từ Upstream AI!");
+        assert_eq!(
+            res1_json["choices"][0]["message"]["content"],
+            "Đây là câu trả lời từ Upstream AI!"
+        );
 
         // --- Lần 2: Cache HIT (Cùng câu hỏi -> Đọc từ Semantic Cache) ---
         let payload2 = serde_json::json!({
             "model": "gpt-4",
             "messages": [{"role": "user", "content": "AI ơi, chào bạn!"}] // Câu hỏi tương đồng
         });
-        
+
         let req2 = Request::builder()
             .method("POST")
             .uri("/api/ai/v1/chat/completions")
@@ -729,15 +770,17 @@ mod tests {
             .header("Content-Type", "application/json")
             .body(Body::from(serde_json::to_vec(&payload2).unwrap()))
             .unwrap();
-        
+
         let start2 = std::time::Instant::now();
         let res2 = app.clone().oneshot(req2).await.unwrap();
         let duration2 = start2.elapsed();
-        
+
         assert_eq!(res2.status(), StatusCode::OK);
         assert_eq!(res2.headers().get("X-Cache").unwrap(), "HIT");
-        
-        let body_bytes2 = axum::body::to_bytes(res2.into_body(), 1024 * 1024).await.unwrap();
+
+        let body_bytes2 = axum::body::to_bytes(res2.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         // Cấu trúc trả về từ HIT Cache hiện tại là Raw String từ Cache, hoặc bạn đã bọc nó lại.
         // CacheHIT lúc trước trả về string gốc
         let hit_text = String::from_utf8(body_bytes2.to_vec()).unwrap();

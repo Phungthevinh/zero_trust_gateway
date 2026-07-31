@@ -37,6 +37,8 @@ pub struct SecurityConfig {
     pub jwt: JwtConfig,
     pub zero_trust: ZeroTrustConfig,
     pub fast_reject: FastRejectConfig,
+    #[serde(default)]
+    pub trusted_proxies: Vec<ipnetwork::IpNetwork>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

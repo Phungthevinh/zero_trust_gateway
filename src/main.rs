@@ -115,7 +115,12 @@ async fn main() {
 
             // Log thông báo server bắt đầu lắng nghe
             tracing::info!("API Gateway đang chạy trên http://{}", addr);
-            axum::serve(listener, app).await.unwrap();
+            axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+            )
+            .await
+            .unwrap();
         }
         Err(e) => {
             eprintln!("Lỗi khi tải cấu hình: {}", e);
