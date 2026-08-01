@@ -60,7 +60,8 @@ pub async fn proxy_handler(
             );
 
             // 1. Rate Limiting Check
-            let ip_key = get_client_ip(addr, &parts.headers, &state.config.security.trusted_proxies);
+            let ip_key =
+                get_client_ip(addr, &parts.headers, &state.config.security.trusted_proxies);
             if !state.rate_limiter.check_request(&ip_key).await {
                 tracing::warn!("Rate limit exceeded for IP: {}", ip_key);
                 return (StatusCode::TOO_MANY_REQUESTS, "Too Many Requests").into_response();
@@ -215,39 +216,42 @@ async fn handle_ai_request(
         Err(_) => return (StatusCode::BAD_REQUEST, "Invalid JSON body").into_response(),
     };
 
-    let prompt = json_body
-        .get("messages")
-        .and_then(|m| m.as_array())
-        .and_then(|arr| {
-            arr.iter()
-                .rev()
-                .find(|msg| msg.get("role").and_then(|r| r.as_str()) == Some("user"))
-        })
-        .and_then(|msg| msg.get("content").and_then(|c| c.as_str()));
+    let is_dynamic = is_mcp_or_tool_request(&json_body);
+    let mut extracted_prompt = None;
 
-    let prompt = match prompt {
-        Some(p) => p,
-        None => {
-            return (StatusCode::BAD_REQUEST, "Missing user prompt in messages").into_response();
+    if !is_dynamic {
+        let prompt = json_body
+            .get("messages")
+            .and_then(|m| m.as_array())
+            .and_then(|arr| {
+                arr.iter()
+                    .rev()
+                    .find(|msg| msg.get("role").and_then(|r| r.as_str()) == Some("user"))
+            })
+            .and_then(|msg| msg.get("content").and_then(|c| c.as_str()));
+        let prompt = match prompt {
+            Some(p) => p,
+            None => {
+                return (StatusCode::BAD_REQUEST, "Missing user prompt in messages")
+                    .into_response();
+            }
+        };
+
+        extracted_prompt = Some(prompt.clone());
+        let cache = state.semantic_cache.as_ref().unwrap();
+
+        if let Some(cached_response) = cache.lookup(&prompt) {
+            tracing::info!("Semantic Cache HIT cho prompt: {}", prompt);
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "application/json")
+                .header("X-Cache", "HIT")
+                .body(Body::from(cached_response))
+                .unwrap();
         }
-    };
-
-    // 1. Lấy semantic cache từ AppState
-    let cache = state.semantic_cache.as_ref().unwrap();
-
-    // 2. Tra cứu prompt trong cache
-    if let Some(cached_response) = cache.lookup(prompt) {
-        tracing::info!("Semantic Cache HIT cho prompt: {}", prompt);
-        return Response::builder()
-            .status(StatusCode::OK)
-            .header("Content-Type", "application/json")
-            .header("X-Cache", "HIT")
-            .body(Body::from(cached_response))
-            .unwrap();
     }
 
     let mut upstream_req = state.client.request(parts.method.clone(), &target_url);
-
     // 2. Lặp qua tất cả Headers của Client gửi lên, copy sang Request mới
     for (header_name, header_value) in parts.headers.iter() {
         if header_name != axum::http::header::HOST {
@@ -285,31 +289,46 @@ async fn handle_ai_request(
         }
     };
 
-    // Parse res_bytes thành JSON
-    if let Ok(res_json) = serde_json::from_slice::<serde_json::Value>(&res_bytes) {
-        // Trích xuất chuỗi câu trả lời của AI
-        if let Some(ai_text) = res_json["choices"][0]["message"]["content"].as_str() {
-            // Lưu vào Semantic Cache!
-            cache.insert(prompt, ai_text.to_string());
-            tracing::info!(
-                "Đã lưu response của AI vào Semantic Cache cho prompt: {}",
-                prompt
-            );
+    if status.is_success() && !is_dynamic {
+        if let Some(prompt) = extracted_prompt {
+            // Khôi phục logic parse JSON cũ ở đây
+            if let Ok(res_json) = serde_json::from_slice::<serde_json::Value>(&res_bytes) {
+                if let Some(ai_text) = res_json["choices"][0]["message"]["content"].as_str() {
+                    let cache = state.semantic_cache.as_ref().unwrap();
+                    cache.insert(prompt, ai_text.to_string());
+                    tracing::info!(
+                        "Semantic Cache MISS, response cached cho prompt: {}",
+                        prompt
+                    );
+                }
+            }
         }
     }
+
+    // Đặt ở cuối hàm
     Response::builder()
         .status(status)
         .header("Content-Type", "application/json")
         .header("X-Cache", "MISS")
         .body(Body::from(res_bytes))
         .unwrap_or_else(|err| {
-            tracing::error!("Lỗi dựng response: {}", err);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Lỗi dựng response: {}", err),
-            )
-                .into_response()
+            tracing::error!("Lỗi khi dựng response: {:?}", err);
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from("Internal Server Error"))
+                .unwrap()
         })
+}
+
+fn is_mcp_or_tool_request(json_body: &serde_json::Value) -> bool {
+    let tool = json_body.get("tools").map_or(false, |v| v.is_array());
+
+    let is_jsonrpc = json_body
+        .get("jsonrpc")
+        .and_then(|v| v.as_str())
+        .map_or(false, |v| v == "2.0")
+        && json_body.get("method").is_some();
+    tool || is_jsonrpc
 }
 
 fn get_client_ip(

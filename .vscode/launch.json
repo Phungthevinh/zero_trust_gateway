@@ -1,0 +1,41 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug Gateway (CodeLLDB)",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=zero_trust_gateway",
+                    "--package=zero_trust_gateway"
+                ],
+                "filter": {
+                    "name": "zero_trust_gateway",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug"
+            }
+        },
+        {
+            "type": "cppvsdbg",
+            "request": "launch",
+            "name": "Debug Gateway (Windows MSVC)",
+            "program": "${workspaceFolder}/target/debug/zero_trust_gateway.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "RUST_LOG",
+                    "value": "debug"
+                }
+            ]
+        }
+    ]
+}
