@@ -29,6 +29,11 @@ Hệ thống hoạt động theo triết lý bảo mật tối tân: **"Never Tr
   * Tích hợp proxy điều phối luồng truy cập LLM (OpenAI/Gemini).
   * Chạy mô hình Embedding ONNX trực tiếp (offline) tại Gateway bằng `tract-onnx` để phân tích ngữ nghĩa câu hỏi.
   * Bộ đệm ngữ nghĩa **Semantic Cache** giúp tái sử dụng câu trả lời tương tự từ bộ nhớ cục bộ, tiết kiệm tới **70% chi phí gọi API LLM**.
+* **📊 Hệ thống Giám sát & Dashboard thời gian thực**:
+  * API REST (`GET /admin/metrics`) trả về JSON snapshot các chỉ số hoạt động.
+  * Luồng SSE (`GET /admin/events`) phát dữ liệu metrics mỗi 1 giây (Server-Sent Events).
+  * Web Dashboard tại `/dashboard` với giao diện Dark Glassmorphism hiện đại: 4 thẻ chỉ số, biểu đồ Chart.js thời gian thực, theo dõi AI Cache Hit/Miss Ratio.
+  * RAII Guard (`ActiveRequestGuard`) đảm bảo số liệu `active_requests` chính xác tuyệt đối trong mọi tình huống (bao gồm panic/early return).
 
 ---
 
@@ -67,6 +72,8 @@ graph TD
 | **Security** | `jsonwebtoken 10`, `ring 0.17` | Mã hóa JWT, ký số Ed25519 bảo vệ microservices |
 | **Caching/Session** | `moka 0.12`, `redis 1.2` | Cache cục bộ in-memory và phân tán qua Redis |
 | **AI Processing** | `tract-onnx 0.21`, `reqwest` | Chạy ONNX embedding và proxy LLM traffic |
+| **Monitoring** | `tokio-stream 0.1`, `futures-util 0.3` | SSE real-time stream, metrics telemetry |
+| **Static Files** | `tower-http 0.5` (ServeDir) | Phục vụ Web Dashboard tĩnh tại `/dashboard` |
 
 ---
 
@@ -146,11 +153,36 @@ curl -L -o models/all-MiniLM-L6-v2.onnx https://huggingface.co/Xenova/all-MiniLM
 * **Cosine Similarity** (2 câu khác ý nghĩa): **0.8951** (89%)
 * **Thời gian xử lý** (load model + embed 3 câu): **~0.65 giây** (chế độ Release)
 
+### 7. Truy cập Web Dashboard (Admin Monitoring)
+Sau khi khởi chạy Gateway, mở trình duyệt tại:
+```
+http://localhost:8080/dashboard
+```
+Dashboard hiển thị thời gian thực:
+* **4 thẻ chỉ số**: Total Requests, Active In-Flight, Errors/Rejects, AI Cache Hit Ratio %
+* **Biểu đồ đường Chart.js**: Traffic telemetry cập nhật mỗi 1 giây (30 điểm dữ liệu gần nhất)
+* **AI Semantic Cache Breakdown**: Số lần Cache Hit / Miss, thanh tiến trình Cache Efficiency
+* **Trạng thái kết nối SSE**: Tự động reconnect khi mất mạng
+
+**API Monitoring (dành cho tích hợp):**
+| Endpoint | Phương thức | Mô tả |
+| :--- | :--- | :--- |
+| `/admin/metrics` | GET | Trả về JSON snapshot tất cả chỉ số |
+| `/admin/events` | GET (SSE) | Stream dữ liệu metrics mỗi 1 giây |
+| `/health` | GET | Health check, trả về "OK" |
+
 ---
 
 
 ## 📅 Tiến độ dự án (Roadmap)
 Xem chi tiết trạng thái triển khai tại [PROGRESS.md](PROGRESS.md).
+
+| Giai đoạn | Nội dung | Trạng thái |
+| :---: | :--- | :---: |
+| **1** | Lõi Reverse Proxy + Config System | 🟢 Hoàn thành |
+| **2** | Zero-Trust Security + Rate Limiting | 🟢 Hoàn thành |
+| **3** | AI-Native: Embedding Engine + Semantic Cache | 🟢 Hoàn thành |
+| **4** | Metrics API, SSE Stream, Web Dashboard, Single Binary | 🟡 Đang thực hiện |
 
 ## 🤝 Đóng góp ý kiến (Contributing)
 Mọi đóng góp, báo lỗi (issues) và yêu cầu tính năng (PRs) đều được chào đón! Hãy mở một Pull Request hoặc Issue để chúng ta cùng thảo luận.

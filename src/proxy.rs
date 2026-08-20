@@ -9,10 +9,11 @@ use axum::{
 };
 use jsonwebtoken::DecodingKey;
 use ring::signature::Ed25519KeyPair;
-use serde::de::value;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
+use crate::metrics::GatewayMetrics;
 use crate::rate_limit;
 use crate::semantic_cache::SemanticCache;
 
@@ -26,6 +27,7 @@ pub struct AppState {
     pub rate_limiter: Arc<rate_limit::RateLimiter>,
     pub fast_reject: Arc<fast_reject::FastRejectFilter>,
     pub semantic_cache: Option<Arc<SemanticCache>>,
+    pub metrics: Arc<GatewayMetrics>,
 }
 
 // Handler nhận request và khớp route
@@ -34,13 +36,17 @@ pub async fn proxy_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     req: Request<Body>,
 ) -> impl IntoResponse {
+    let _guard = state.metrics.record_active_request();
     let (parts, body) = req.into_parts();
 
     let path = parts.uri.path();
 
+    state.metrics.total_requests.fetch_add(1, Ordering::Relaxed);
+
     // 1. Fast Reject Check
     if let Err(e) = state.fast_reject.check_request(&parts) {
         tracing::warn!("Fast reject: {}", e);
+        state.metrics.total_errors.fetch_add(1, Ordering::Relaxed);
         return (StatusCode::BAD_REQUEST, e.to_string()).into_response();
     }
 
@@ -63,6 +69,7 @@ pub async fn proxy_handler(
             let ip_key =
                 get_client_ip(addr, &parts.headers, &state.config.security.trusted_proxies);
             if !state.rate_limiter.check_request(&ip_key).await {
+                state.metrics.total_errors.fetch_add(1, Ordering::Relaxed);
                 tracing::warn!("Rate limit exceeded for IP: {}", ip_key);
                 return (StatusCode::TOO_MANY_REQUESTS, "Too Many Requests").into_response();
             }
@@ -85,6 +92,7 @@ pub async fn proxy_handler(
                             }
                             Err(e) => {
                                 tracing::warn!("Token JWT không hợp lệ: {:?}", e);
+                                state.metrics.total_errors.fetch_add(1, Ordering::Relaxed);
                                 return StatusCode::UNAUTHORIZED.into_response();
                             }
                         }
@@ -118,6 +126,7 @@ pub async fn proxy_handler(
                 Ok(bytes) => bytes,
                 Err(e) => {
                     tracing::error!("Lỗi khi đọc request body: {:?}", e);
+                    state.metrics.total_errors.fetch_add(1, Ordering::Relaxed);
                     return (StatusCode::BAD_REQUEST, "Không thể đọc request body").into_response();
                 }
             };
@@ -163,6 +172,7 @@ pub async fn proxy_handler(
             let response = match upstream_req.send().await {
                 Ok(res) => res,
                 Err(e) => {
+                    state.metrics.total_errors.fetch_add(1, Ordering::Relaxed);
                     tracing::error!("Lỗi khi gửi request đến upstream: {:?}", e);
                     return (
                         StatusCode::BAD_GATEWAY,
@@ -185,6 +195,7 @@ pub async fn proxy_handler(
             match response_builder.body(response_body) {
                 Ok(res) => res.into_response(),
                 Err(e) => {
+                    state.metrics.total_errors.fetch_add(1, Ordering::Relaxed);
                     tracing::error!("Lỗi khi dựng response: {:?}", e);
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
@@ -195,6 +206,7 @@ pub async fn proxy_handler(
             }
         }
         None => {
+            state.metrics.total_errors.fetch_add(1, Ordering::Relaxed);
             tracing::warn!("Không tìm thấy route khớp cho path: {}", path);
             (
                 StatusCode::NOT_FOUND,
@@ -242,6 +254,9 @@ async fn handle_ai_request(
 
         if let Some(cached_response) = cache.lookup(&prompt) {
             tracing::info!("Semantic Cache HIT cho prompt: {}", prompt);
+
+            state.metrics.ai_cache_hits.fetch_add(1, Ordering::Relaxed);
+
             return Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
@@ -249,6 +264,11 @@ async fn handle_ai_request(
                 .body(Body::from(cached_response))
                 .unwrap();
         }
+
+        state
+            .metrics
+            .ai_cache_misses
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     let mut upstream_req = state.client.request(parts.method.clone(), &target_url);
@@ -435,6 +455,7 @@ mod tests {
                     blocked_paths: vec![],
                     ip_blacklist: vec![],
                 },
+                trusted_proxies: vec!["192.168.0.0/16".parse().unwrap()],
             },
             ai_native: AiNativeConfig {
                 model_path: "models/all-MiniLM-L6-v2.onnx".to_string(),
@@ -474,6 +495,7 @@ mod tests {
             rate_limiter,
             fast_reject,
             semantic_cache: None,
+            metrics: Arc::new(crate::metrics::GatewayMetrics::default()),
         };
 
         let app = Router::new().fallback(proxy_handler).with_state(state);
@@ -485,6 +507,9 @@ mod tests {
         let req = Request::builder()
             .uri("/api/test/target-path")
             .header("Host", "localhost")
+            .extension(axum::extract::ConnectInfo(
+                "127.0.0.1:8080".parse::<std::net::SocketAddr>().unwrap(),
+            ))
             .body(Body::empty())
             .unwrap();
         let _response = app.clone().oneshot(req).await.unwrap();
@@ -496,6 +521,9 @@ mod tests {
             let req = Request::builder()
                 .uri("/api/test/target-path")
                 .header("Host", "localhost")
+                .extension(axum::extract::ConnectInfo(
+                    "127.0.0.1:8080".parse::<std::net::SocketAddr>().unwrap(),
+                ))
                 .body(Body::empty())
                 .unwrap();
 
@@ -561,6 +589,7 @@ mod tests {
                     blocked_paths: vec![],
                     ip_blacklist: vec![],
                 },
+                trusted_proxies: vec!["192.168.0.0/16".parse().unwrap()],
             },
             ai_native: AiNativeConfig {
                 model_path: "models/all-MiniLM-L6-v2.onnx".to_string(),
@@ -595,6 +624,7 @@ mod tests {
             rate_limiter,
             fast_reject,
             semantic_cache: None,
+            metrics: Arc::new(crate::metrics::GatewayMetrics::default()),
         };
 
         let app = Router::new().fallback(proxy_handler).with_state(state);
@@ -604,6 +634,9 @@ mod tests {
         let req = Request::builder()
             .uri("/api/secure/secure-data")
             .header("Host", "localhost")
+            .extension(axum::extract::ConnectInfo(
+                "127.0.0.1:8080".parse::<std::net::SocketAddr>().unwrap(),
+            ))
             .body(Body::empty())
             .unwrap();
         let response = app.clone().oneshot(req).await.unwrap();
@@ -613,6 +646,9 @@ mod tests {
         let req = Request::builder()
             .uri("/api/secure/secure-data")
             .header("Host", "localhost")
+            .extension(axum::extract::ConnectInfo(
+                "127.0.0.1:8080".parse::<std::net::SocketAddr>().unwrap(),
+            ))
             .header("Authorization", "Bearer invalid-token-xyz")
             .body(Body::empty())
             .unwrap();
@@ -624,6 +660,9 @@ mod tests {
         let req = Request::builder()
             .uri("/api/secure/secure-data")
             .header("Host", "localhost")
+            .extension(axum::extract::ConnectInfo(
+                "127.0.0.1:8080".parse::<std::net::SocketAddr>().unwrap(),
+            ))
             .header("Authorization", format!("Bearer {}", valid_token))
             .body(Body::empty())
             .unwrap();
@@ -699,6 +738,7 @@ mod tests {
                     blocked_paths: vec![],
                     ip_blacklist: vec![],
                 },
+                trusted_proxies: vec!["192.168.0.0/16".parse().unwrap()],
             },
             ai_native: AiNativeConfig {
                 model_path: "models/all-MiniLM-L6-v2.onnx".to_string(),
@@ -741,6 +781,7 @@ mod tests {
             rate_limiter,
             fast_reject,
             semantic_cache: Some(semantic_cache),
+            metrics: Arc::new(crate::metrics::GatewayMetrics::default()),
         };
 
         let app = Router::new().fallback(proxy_handler).with_state(state);
@@ -756,6 +797,9 @@ mod tests {
             .method("POST")
             .uri("/api/ai/v1/chat/completions")
             .header("Host", "localhost")
+            .extension(axum::extract::ConnectInfo(
+                "127.0.0.1:8080".parse::<std::net::SocketAddr>().unwrap(),
+            ))
             .header("Content-Type", "application/json")
             .body(Body::from(serde_json::to_vec(&payload).unwrap()))
             .unwrap();
@@ -786,6 +830,9 @@ mod tests {
             .method("POST")
             .uri("/api/ai/v1/chat/completions")
             .header("Host", "localhost")
+            .extension(axum::extract::ConnectInfo(
+                "127.0.0.1:8080".parse::<std::net::SocketAddr>().unwrap(),
+            ))
             .header("Content-Type", "application/json")
             .body(Body::from(serde_json::to_vec(&payload2).unwrap()))
             .unwrap();
@@ -810,5 +857,109 @@ mod tests {
         println!("- Lần 1 (Cache MISS -> Upstream): {:?}", duration1);
         println!("- Lần 2 (Cache HIT -> Local): {:?}", duration2);
         println!("==============================================\n");
+    }
+
+    #[tokio::test]
+    async fn test_admin_metrics_endpoint() {
+        use tower::ServiceExt;
+
+        // 1. Khởi tạo cấu hình giả lập tối thiểu
+        let config = Config {
+            server: ServerConfig {
+                host: "127.0.0.1".to_string(),
+                port: 8080,
+                log_level: "info".to_string(),
+            },
+            database: DatabaseConfig {
+                redis_url: "redis://127.0.0.1:6379".to_string(),
+                connection_timeout: 5000,
+            },
+            security: SecurityConfig {
+                jwt: JwtConfig {
+                    secret_key_path: "certs/jwt_public.pem".to_string(),
+                    issuer: "test".to_string(),
+                },
+                zero_trust: ZeroTrustConfig {
+                    private_key_path: "certs/gateway_private.pem".to_string(),
+                    signature_header: "X-Gateway-Signature".to_string(),
+                },
+                fast_reject: FastRejectConfig {
+                    max_header_count: 50,
+                    max_uri_length: 2048,
+                    max_body_size: 10 * 1024 * 1024,
+                    blocked_paths: vec![],
+                    ip_blacklist: vec![],
+                },
+                trusted_proxies: vec!["192.168.0.0/16".parse().unwrap()],
+            },
+            ai_native: AiNativeConfig {
+                model_path: "models/all-MiniLM-L6-v2.onnx".to_string(),
+                similarity_threshold: 0.95,
+                cache_ttl: 3600,
+            },
+            routes: vec![],
+        };
+
+        // 2. Khởi tạo các dependencies cho AppState
+        let public_key_pem = std::fs::read("certs/jwt_public.pem").unwrap();
+        let decoding_key = DecodingKey::from_rsa_pem(&public_key_pem).unwrap();
+        let signing_key = crate::signature::load_private_key("certs/gateway_private.pk8")
+            .await
+            .expect("Không tìm thấy certs/gateway_private.pk8");
+        let rate_limiter = Arc::new(crate::rate_limit::RateLimiter::new(100.0, 10.0, 1));
+        let fast_reject = Arc::new(crate::fast_reject::FastRejectFilter::new(&config));
+        let metrics = Arc::new(crate::metrics::GatewayMetrics::default());
+
+        // Giả lập tăng metric
+        metrics
+            .total_requests
+            .fetch_add(42, std::sync::atomic::Ordering::Relaxed);
+        metrics
+            .ai_cache_hits
+            .fetch_add(10, std::sync::atomic::Ordering::Relaxed);
+        metrics
+            .ai_cache_misses
+            .fetch_add(5, std::sync::atomic::Ordering::Relaxed);
+
+        let state = AppState {
+            config: Arc::new(config),
+            client: reqwest::Client::new(),
+            jwt_decoding_key: Arc::new(decoding_key),
+            signing_key: Arc::new(signing_key),
+            rate_limiter,
+            fast_reject,
+            semantic_cache: None,
+            metrics,
+        };
+
+        // 3. Dựng Router gắn handler admin_metrics
+        let app = Router::new()
+            .route("/admin/metrics", get(crate::metrics::admin_metrics_handler))
+            .with_state(state);
+
+        // 4. Tạo Request GET /admin/metrics
+        let req = Request::builder()
+            .method("GET")
+            .uri("/admin/metrics")
+            .body(Body::empty())
+            .unwrap();
+
+        // 5. Gửi request vào router
+        let res = app.oneshot(req).await.unwrap();
+
+        // 6. Kiểm tra kết quả trả về
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(res.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+        assert_eq!(json["total_requests"], 42);
+        assert_eq!(json["ai_cache_hits"], 10);
+        assert_eq!(json["ai_cache_misses"], 5);
+        assert_eq!(json["total_errors"], 0);
+
+        println!("\n✅ Admin Metrics Endpoint Test PASSED: {:?}", json);
     }
 }

@@ -69,8 +69,11 @@ Xây dựng một API Gateway đa tầng bảo mật với:
 | FR-06 | Fast Reject Filter | Từ chối siêu nhanh (<1.2ms) các request xấu/nghi ngờ trước khi đi vào pipeline chính | ✅ Hoàn thành |
 | FR-07 | AI Embedding Engine | Chạy mô hình ONNX (`all-MiniLM-L6-v2`) cục bộ để chuyển đổi text → vector 384 chiều | ✅ Hoàn thành |
 | FR-08 | Semantic Cache | Bộ đệm ngữ nghĩa tìm kiếm câu hỏi tương tự bằng cosine similarity, tái sử dụng LLM response | ✅ Hoàn thành |
-| FR-09 | AI Traffic Proxy | Proxy điều phối lưu lượng truy cập tới các dịch vụ AI (OpenAI, Gemini) | 🟡 Đang triển khai |
-| FR-10 | Web Dashboard | Giao diện quản trị hiển thị traffic, biểu đồ thời gian thực | ⏳ Chưa bắt đầu |
+| FR-09 | AI Traffic Proxy | Proxy điều phối lưu lượng truy cập tới các dịch vụ AI (OpenAI, Gemini) | ✅ Hoàn thành |
+| FR-10 | Admin Metrics API | API REST trả về JSON snapshot các chỉ số Gateway (`/admin/metrics`) | ✅ Hoàn thành |
+| FR-11 | Real-time SSE Stream | Luồng Server-Sent Events phát dữ liệu metrics mỗi 1 giây (`/admin/events`) | ✅ Hoàn thành |
+| FR-12 | Web Dashboard | Giao diện quản trị Dark Glassmorphism với biểu đồ Chart.js thời gian thực (`/dashboard`) | ✅ Hoàn thành |
+| FR-13 | Web Dashboard | Giao diện quản trị hiển thị traffic, biểu đồ thời gian thực | ✅ Hoàn thành |
 
 ### 2.2. Mục tiêu phi chức năng (Non-Functional Requirements)
 
@@ -187,6 +190,7 @@ zero_trust_gateway/
     ├── proxy.rs             # Reverse Proxy engine + AppState + Handler
     ├── ai_engine.rs         # ONNX Embedding Engine (tract-onnx)
     ├── semantic_cache.rs    # Semantic Cache (Vector Search + TTL)
+    ├── metrics.rs           # Gateway Metrics Collector, RAII Guard, REST & SSE handlers
     └── bin/
         └── keygen.rs        # CLI utility sinh khóa Ed25519 (PKCS#8)
 ```
@@ -424,6 +428,8 @@ struct AppState {
     signing_key: Arc<Ed25519KeyPair>,        // Khóa ký Ed25519 (private key)
     rate_limiter: Arc<RateLimiter>,          // Bộ giới hạn tần suất
     fast_reject: Arc<FastRejectFilter>,      // Bộ lọc từ chối nhanh
+    semantic_cache: Option<Arc<SemanticCache>>, // Bộ đệm ngữ nghĩa AI (Graceful Degradation)
+    metrics: Arc<GatewayMetrics>,            // Bộ thu thập chỉ số hoạt động (atomic counters)
 }
 ```
 
@@ -780,6 +786,9 @@ classDiagram
 | Method | Path | Mô tả | Auth |
 |:---:|:---|:---|:---:|
 | GET | `/health` | Health check, trả "OK" | Không |
+| GET | `/admin/metrics` | JSON snapshot các chỉ số Gateway (total_requests, active_requests, total_errors, ai_cache_hits, ai_cache_misses) | Không |
+| GET | `/admin/events` | Server-Sent Events stream, phát JSON metrics mỗi 1 giây | Không |
+| GET | `/dashboard/*` | Phục vụ Web Dashboard tĩnh (HTML/CSS/JS) qua `tower-http::ServeDir` | Không |
 | ANY | `/*` (fallback) | Reverse proxy handler | Tùy route |
 
 ### 7.2. Headers đặc biệt
@@ -1055,19 +1064,18 @@ routes:
 |:---:|:---|:---|:---:|
 | **1** | Tháng 1-2 | Lõi Reverse Proxy + Config System | 🟢 Hoàn thành |
 | **2** | Tháng 3-4 | Zero-Trust Security + Rate Limiting | 🟢 Hoàn thành |
-| **3** | Tháng 5 | AI-Native: Embedding Engine + Semantic Cache | 🟡 Đang thực hiện |
-| **4** | Tháng 6 | Web Dashboard + Single Binary + Benchmarking | ⚪ Chưa bắt đầu |
+| **3** | Tháng 5 | AI-Native: Embedding Engine + Semantic Cache | 🟢 Hoàn thành |
+| **4** | Tháng 6 | Metrics API + SSE Stream + Web Dashboard + Single Binary + Benchmarking | 🟡 Đang thực hiện |
 
-### Công việc còn lại Giai đoạn 3:
-- [ ] Hoàn thiện implementation `lookup()` và `insert()` trong `semantic_cache.rs`
-- [ ] Tích hợp SemanticCache vào `AppState` và `proxy_handler()`
-- [ ] Xây dựng AI Traffic Proxy (parse request body, điều phối LLM)
-- [ ] Tối ưu hóa bộ nhớ đệm và parse giao thức MCP (Model Context Protocol)
+### Công việc đã hoàn thành Giai đoạn 4:
+- [x] Xây dựng Core Metrics Collector (`src/metrics.rs`) với `GatewayMetrics` struct dùng `AtomicUsize`, RAII Guard (`ActiveRequestGuard` + trait `Drop`)
+- [x] API REST `GET /admin/metrics` trả về JSON snapshot
+- [x] Real-time SSE Stream `GET /admin/events` sử dụng `IntervalStream` + `KeepAlive` (1s interval)
+- [x] Web Dashboard tại `/dashboard` (Dark Glassmorphism, Chart.js, EventSource auto-reconnect)
+- [x] Tích hợp metrics vào `proxy_handler` (total_requests, active_requests, total_errors, ai_cache_hits, ai_cache_misses)
 
-### Công việc Giai đoạn 4:
-- [ ] API quản trị nội bộ (REST/SSE/WebSocket) cho traffic monitoring
-- [ ] Web Dashboard (React/Vue) hiển thị biểu đồ thời gian thực
-- [ ] Đóng gói Single Binary (include static assets)
+### Công việc còn lại Giai đoạn 4:
+- [ ] Đóng gói Single Binary dùng `rust-embed` (nhúng static assets vào binary)
 - [ ] Benchmark so sánh với Nginx và Kong
 
 ---
@@ -1079,12 +1087,13 @@ routes:
 | Crate | Phiên bản | Vai trò |
 |:---|:---|:---|
 | `tokio` | 1.52.3 | Async runtime (full features) |
-| `axum` | 0.8.9 | HTTP framework (routing, extractors, macros) |
+| `axum` | 0.8.9 | HTTP framework (routing, extractors, SSE, macros) |
 | `hyper` | 1.4.1 | HTTP protocol implementation |
 | `tower` | 0.4.13 | Middleware/service layer |
-| `tower-http` | 0.5.2 | HTTP middleware (CORS, trace, static files) |
+| `tower-http` | 0.5.2 | HTTP middleware (CORS, trace, static files ServeDir) |
 | `serde` | 1.0 | Serialization/deserialization |
 | `serde_yaml` | 0.9 | YAML config parser |
+| `serde_json` | 1.0 | JSON serialization (metrics snapshot) |
 | `jsonwebtoken` | 10.4.0 | JWT encoding/decoding (RS256) |
 | `ring` | 0.17 | Cryptography (Ed25519, SHA-256) |
 | `moka` | 0.12.8 | High-performance concurrent cache |
@@ -1096,6 +1105,9 @@ routes:
 | `uuid` | 1.8.0 | UUID v4 generation |
 | `chrono` | 0.4.45 | Date/time handling |
 | `base64` | 0.22 | Base64 encoding/decoding |
+| `ipnetwork` | 0.21.1 | IP network/subnet matching (trusted proxies) |
+| `tokio-stream` | 0.1 | Stream utilities (IntervalStream for SSE) |
+| `futures-util` | 0.3 | Async stream combinators |
 
 ### 14.2. Cấu trúc thư mục dự án
 
@@ -1117,6 +1129,10 @@ zero_trust_gateway/                    # Repository root
     │   ├── jwt_public.pem              # RSA public key (xác thực JWT)
     │   ├── jwt_private.pem             # RSA private key (Auth Service)
     │   └── gateway_private.pk8         # Ed25519 private key (signing)
+    ├── static/                         # Web Dashboard assets
+    │   ├── index.html                  # Giao diện HTML5 (Dark Glassmorphism)
+    │   ├── style.css                   # CSS (Cyberpunk theme, animations)
+    │   └── app.js                      # JavaScript (EventSource SSE, Chart.js)
     └── src/
         ├── main.rs
         ├── config.rs
@@ -1128,6 +1144,7 @@ zero_trust_gateway/                    # Repository root
         ├── proxy.rs
         ├── ai_engine.rs
         ├── semantic_cache.rs
+        ├── metrics.rs                  # Gateway Metrics + RAII Guard + REST/SSE handlers
         └── bin/
             └── keygen.rs
 ```
@@ -1153,4 +1170,4 @@ zero_trust_gateway/                    # Repository root
 ---
 
 > **Tài liệu này được tạo tự động từ phân tích mã nguồn dự án Zero-Trust API Gateway.**
-> **Phiên bản**: 1.0 | **Ngày cập nhật**: 18/07/2026
+> **Phiên bản**: 1.1 | **Ngày cập nhật**: 20/08/2026

@@ -8,6 +8,7 @@ use axum::{Router, routing::get};
 use config::Config;
 use jsonwebtoken::DecodingKey;
 use std::sync::Arc;
+use tower_http::services::ServeDir;
 
 mod ai_engine;
 mod auth;
@@ -20,6 +21,8 @@ mod semantic_cache;
 mod signature;
 use crate::{ai_engine::AiEngine, fast_reject::FastRejectFilter, semantic_cache::SemanticCache};
 use proxy::{AppState, proxy_handler};
+mod metrics;
+use metrics::{admin_metrics_handler, admin_metrics_sse_handler};
 
 #[tokio::main]
 async fn main() {
@@ -103,10 +106,14 @@ async fn main() {
                 rate_limiter,
                 fast_reject: fast_reject,
                 semantic_cache: semantic_cache,
+                metrics: Arc::new(crate::metrics::GatewayMetrics::default()),
             };
             // 2. Dựng Router và gắn State
             let app = Router::new()
                 .route("/health", get(|| async { "OK" }))
+                .route("/admin/metrics", get(admin_metrics_handler))
+                .route("/admin/events", get(admin_metrics_sse_handler))
+                .nest_service("/dashboard", ServeDir::new("static"))
                 .fallback(proxy_handler)
                 .with_state(state);
             // 3. Lắng nghe và khởi chạy Server
