@@ -1,4 +1,13 @@
+// =====================================================================
+// Project: Zero-Trust API Gateway
+// Author: Phung The Vinh (ptvstar2003@gmail.com)
+// Copyright © 2026. All rights reserved.
+// =====================================================================
+
 use crate::config::Config;
+use crate::metrics::GatewayMetrics;
+use crate::rate_limit;
+use crate::semantic_cache::SemanticCache;
 use crate::signature;
 use crate::{auth, fast_reject};
 use axum::{
@@ -12,10 +21,6 @@ use ring::signature::Ed25519KeyPair;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-
-use crate::metrics::GatewayMetrics;
-use crate::rate_limit;
-use crate::semantic_cache::SemanticCache;
 
 // Định nghĩa AppState chia sẻ dữ liệu giữa các luồng
 #[derive(Clone)]
@@ -354,7 +359,7 @@ fn is_mcp_or_tool_request(json_body: &serde_json::Value) -> bool {
 fn get_client_ip(
     ip_addr: SocketAddr,
     headers: &HeaderMap,
-    trusted_proxies: &Vec<ipnetwork::IpNetwork>,
+    trusted_proxies: &[ipnetwork::IpNetwork],
 ) -> String {
     //trích xuất IPAddr từ soketAddr
     let tcp_ip = ip_addr.ip();

@@ -1,3 +1,9 @@
+// =====================================================================
+// Project: Zero-Trust API Gateway
+// Author: Phung The Vinh (ptvstar2003@gmail.com)
+// Copyright © 2026. All rights reserved.
+// =====================================================================
+
 use crate::proxy::AppState;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::{Json, extract::State};

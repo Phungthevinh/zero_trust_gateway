@@ -1,3 +1,9 @@
+// =====================================================================
+// Project: Zero-Trust API Gateway
+// Author: Phung The Vinh (ptvstar2003@gmail.com)
+// Copyright © 2026. All rights reserved.
+// =====================================================================
+
 use crate::config::Config;
 
 use axum::http::{Method, header, request::Parts};

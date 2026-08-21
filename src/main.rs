@@ -4,25 +4,66 @@
 // Copyright © 2026. All rights reserved.
 // =====================================================================
 
+// === Core Framework ===
 use axum::{Router, routing::get};
-use config::Config;
-use jsonwebtoken::DecodingKey;
 use std::sync::Arc;
 
-mod ai_engine;
-mod auth;
+// === Configuration ===
 mod config;
-mod dashboard;
+use config::Config;
+
+// === Security Modules ===
+mod auth;
 mod fast_reject;
-mod proxy;
+mod signature;
+use fast_reject::FastRejectFilter;
+use jsonwebtoken::DecodingKey;
+
+// === Rate Limiting ===
 mod rate_limit;
 mod redis_rate_limit;
+
+// === AI-Native Engine ===
+mod ai_engine;
 mod semantic_cache;
-mod signature;
-use crate::{ai_engine::AiEngine, fast_reject::FastRejectFilter, semantic_cache::SemanticCache};
-use proxy::{AppState, proxy_handler};
+use ai_engine::AiEngine;
+use semantic_cache::SemanticCache;
+
+// === Monitoring & Dashboard ===
 mod metrics;
+mod dashboard;
 use metrics::{admin_metrics_handler, admin_metrics_sse_handler};
+
+// === Reverse Proxy ===
+mod proxy;
+use proxy::{AppState, proxy_handler};
+
+// =====================================================================
+// Helper: In thông tin cấu hình khi khởi động Gateway
+// =====================================================================
+fn print_startup_banner(config: &Config) {
+    println!("Đã tải cấu hình: {:#?}", config);
+    println!("--------------------------------------------------");
+    println!(
+        "- Máy chủ hoạt động tại: {}:{}",
+        config.server.host, config.server.port
+    );
+    println!("- Mức log: {}", config.server.log_level);
+    println!("- Redis: {}", config.database.redis_url);
+    println!("- JWT Secret: {}", config.security.jwt.secret_key_path);
+    println!(
+        "- Zero Trust Private Key: {}",
+        config.security.zero_trust.private_key_path
+    );
+    println!("- AI Native Model Path: {}", config.ai_native.model_path);
+    println!(
+        "- AI Native Similarity Threshold: {}",
+        config.ai_native.similarity_threshold
+    );
+    println!("- AI Native Cache TTL: {}", config.ai_native.cache_ttl);
+    println!("- Routes: {:#?}", config.routes);
+    println!("--------------------------------------------------");
+}
 
 #[tokio::main]
 async fn main() {
@@ -30,33 +71,12 @@ async fn main() {
 
     match Config::load("config.yaml") {
         Ok(config) => {
-            println!("Đã tải cấu hình: {:#?}", config);
-            println!("--------------------------------------------------");
-            println!(
-                "- Máy chủ hoạt động tại: {}:{}",
-                config.server.host, config.server.port
-            );
+            print_startup_banner(&config);
 
-            println!("- Mức log: {}", config.server.log_level);
-            println!("- Redis: {}", config.database.redis_url);
-            println!("- JWT Secret: {}", config.security.jwt.secret_key_path);
-            println!(
-                "- Zero Trust Private Key: {}",
-                config.security.zero_trust.private_key_path
-            );
-            println!("- AI Native Model Path: {}", config.ai_native.model_path);
-            println!(
-                "- AI Native Similarity Threshold: {}",
-                config.ai_native.similarity_threshold
-            );
-            println!("- AI Native Cache TTL: {}", config.ai_native.cache_ttl);
-            println!("- Routes: {:#?}", config.routes);
-            println!("--------------------------------------------------");
-
-            //khởi tạo fast_reject
+            // Khởi tạo Fast Reject Filter
             let fast_reject = Arc::new(FastRejectFilter::new(&config));
 
-            //khởi tạo public key
+            // Khởi tạo JWT Decoding Key (RSA Public Key)
             let public_key_pem = match std::fs::read(&config.security.jwt.secret_key_path) {
                 Ok(bytes) => bytes,
                 Err(e) => {
@@ -64,11 +84,9 @@ async fn main() {
                     return;
                 }
             };
-
-            //khởi tạo decoding key
             let decoding_key = DecodingKey::from_rsa_pem(&public_key_pem).unwrap();
 
-            // Load Ed25519 private key cho Zero-Trust signing
+            // Khởi tạo Ed25519 Signing Key cho Zero-Trust
             let signing_key =
                 match signature::load_private_key(&config.security.zero_trust.private_key_path)
                     .await
@@ -80,8 +98,10 @@ async fn main() {
                     }
                 };
 
-            // Khởi tạo Rate Limiter cục bộ (ví dụ: tối đa 100 request/giây, hồi phục 10 req/s, TTL 60 giây)
+            // Khởi tạo Rate Limiter cục bộ (Token Bucket: 100 req/s, refill 10 req/s, TTL 1s)
             let rate_limiter = Arc::new(rate_limit::RateLimiter::new(100.0, 10.0, 1));
+
+            // Khởi tạo Semantic Cache (Graceful Degradation nếu model không nạp được)
             let semantic_cache = match AiEngine::new(&config.ai_native.model_path) {
                 Ok(ai_engine) => {
                     let cache = SemanticCache::new(
@@ -97,17 +117,18 @@ async fn main() {
                 }
             };
 
-            // 1. Khởi tạo AppState dùng chung
+            // 1. Khởi tạo AppState chia sẻ giữa các handler
             let state = AppState {
                 config: Arc::new(config.clone()),
                 client: reqwest::Client::new(),
                 jwt_decoding_key: Arc::new(decoding_key),
-                signing_key: signing_key,
+                signing_key,
                 rate_limiter,
-                fast_reject: fast_reject,
-                semantic_cache: semantic_cache,
-                metrics: Arc::new(crate::metrics::GatewayMetrics::default()),
+                fast_reject,
+                semantic_cache,
+                metrics: Arc::new(metrics::GatewayMetrics::default()),
             };
+
             // 2. Dựng Router và gắn State
             let app = Router::new()
                 .route("/health", get(|| async { "OK" }))
@@ -117,11 +138,11 @@ async fn main() {
                 .route("/dashboard/{*path}", get(dashboard::dashboard_handler))
                 .fallback(proxy_handler)
                 .with_state(state);
+
             // 3. Lắng nghe và khởi chạy Server
             let addr = format!("{}:{}", config.server.host, config.server.port);
             let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
 
-            // Log thông báo server bắt đầu lắng nghe
             tracing::info!("API Gateway đang chạy trên http://{}", addr);
             axum::serve(
                 listener,

@@ -1,3 +1,9 @@
+// =====================================================================
+// Project: Zero-Trust API Gateway
+// Author: Phung The Vinh (ptvstar2003@gmail.com)
+// Copyright © 2026. All rights reserved.
+// =====================================================================
+
 use moka::future::Cache;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -33,11 +39,8 @@ impl RateLimiter {
 
     pub async fn check_request(&self, key: &str) -> bool {
         let now = Instant::now();
-        // Sử dụng `get_with` (hoặc `entry`) để đảm bảo thao tác kiểm tra và khởi tạo là nguyên tử (Atomic)
+        // Sử dụng `get_with` để đảm bảo thao tác kiểm tra và khởi tạo là nguyên tử (Atomic)
         // Tránh tình trạng Race Condition (TOCTOU) khi nhiều request cùng gọi lúc cache rỗng.
-        // let entry = self.cache.get_with(key.to_string(), || {
-
-        // })
         let state_arc = self
             .cache
             .get_with(key.to_string(), async {

@@ -1,3 +1,9 @@
+// =====================================================================
+// Project: Zero-Trust API Gateway
+// Author: Phung The Vinh (ptvstar2003@gmail.com)
+// Copyright © 2026. All rights reserved.
+// =====================================================================
+
 use ring::rand::SystemRandom;
 use ring::signature::Ed25519KeyPair;
 use std::fs;
