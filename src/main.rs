@@ -8,11 +8,11 @@ use axum::{Router, routing::get};
 use config::Config;
 use jsonwebtoken::DecodingKey;
 use std::sync::Arc;
-use tower_http::services::ServeDir;
 
 mod ai_engine;
 mod auth;
 mod config;
+mod dashboard;
 mod fast_reject;
 mod proxy;
 mod rate_limit;
@@ -113,7 +113,8 @@ async fn main() {
                 .route("/health", get(|| async { "OK" }))
                 .route("/admin/metrics", get(admin_metrics_handler))
                 .route("/admin/events", get(admin_metrics_sse_handler))
-                .nest_service("/dashboard", ServeDir::new("static"))
+                .route("/dashboard", get(dashboard::dashboard_handler))
+                .route("/dashboard/{*path}", get(dashboard::dashboard_handler))
                 .fallback(proxy_handler)
                 .with_state(state);
             // 3. Lắng nghe và khởi chạy Server

@@ -3,148 +3,134 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zero-Trust Gateway — Real-time Control Center</title>
-    <!-- Google Fonts -->
+    <title>Zero-Trust Gateway — Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-    <!-- Chart.js CDN -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="/dashboard/style.css">
 </head>
 <body>
     <div class="dashboard-container">
-        <!-- Top Navigation / Header -->
-        <header class="topbar glass-panel">
+        <!-- Header -->
+        <header class="topbar">
             <div class="brand">
-                <div class="logo-badge">
-                    <span class="shield-icon">🛡️</span>
-                </div>
+                <div class="logo-badge">&gt;_</div>
                 <div class="brand-text">
-                    <h1>ZERO-TRUST GATEWAY</h1>
-                    <span class="sub-brand">AI-Native & Semantic Cache Engine • Sub-millisecond Latency</span>
+                    <h1>zero-trust-gateway</h1>
+                    <span class="sub-brand">ai-native proxy · semantic cache · rust</span>
                 </div>
             </div>
 
             <div class="status-bar">
                 <div class="status-indicator online" id="connection-status">
                     <span class="pulse-dot"></span>
-                    <span class="status-text" id="status-label">SSE CONNECTED</span>
+                    <span class="status-text" id="status-label">connected</span>
                 </div>
                 <div class="server-time font-mono" id="clock">00:00:00 UTC</div>
             </div>
         </header>
 
-        <!-- Security Pipeline Badges -->
-        <section class="security-pipeline glass-panel">
+        <!-- Pipeline -->
+        <section class="security-pipeline">
             <div class="pipeline-title">
-                <span>🔒 ZERO-TRUST PIPELINE:</span>
+                <span>pipeline:</span>
             </div>
             <div class="pipeline-chips">
                 <div class="chip active">
-                    <span class="chip-dot"></span> Fast Reject (&lt;1.2ms)
+                    <span class="chip-dot"></span> fast-reject (&lt;1.2ms)
                 </div>
                 <div class="chip active">
-                    <span class="chip-dot"></span> Trusted Proxies IP
+                    <span class="chip-dot"></span> trusted-proxies
                 </div>
                 <div class="chip active">
-                    <span class="chip-dot"></span> Moka & Redis Token Bucket
+                    <span class="chip-dot"></span> rate-limit (moka+redis)
                 </div>
                 <div class="chip active">
-                    <span class="chip-dot"></span> JWT RS256 Auth
+                    <span class="chip-dot"></span> jwt-rs256
                 </div>
                 <div class="chip active">
-                    <span class="chip-dot"></span> Ed25519 Cryptographic Signature
+                    <span class="chip-dot"></span> ed25519-sig
                 </div>
                 <div class="chip active ai">
-                    <span class="chip-dot"></span> ONNX all-MiniLM-L6-v2 Engine
+                    <span class="chip-dot"></span> onnx/minilm-l6-v2
                 </div>
             </div>
         </section>
 
-        <!-- Main Metrics Grid -->
+        <!-- Metrics -->
         <main class="metrics-grid">
-            <!-- Card 1: Total Requests -->
-            <div class="metric-card glass-panel card-cyan">
+            <div class="metric-card card-cyan">
                 <div class="card-header">
-                    <span class="card-icon">⚡</span>
-                    <span class="card-title">TOTAL REQUESTS</span>
+                    <span class="card-title">total requests</span>
                 </div>
                 <div class="card-body">
                     <div class="metric-value font-mono" id="total-requests">0</div>
                     <div class="metric-trend positive">
-                        <span>↑ Throughput Ingress</span>
+                        <span>throughput ingress</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Card 2: Active In-flight Requests -->
-            <div class="metric-card glass-panel card-emerald">
+            <div class="metric-card card-emerald">
                 <div class="card-header">
-                    <span class="card-icon">🌊</span>
-                    <span class="card-title">ACTIVE REQUESTS (IN-FLIGHT)</span>
+                    <span class="card-title">active (in-flight)</span>
                 </div>
                 <div class="card-body">
                     <div class="metric-value font-mono" id="active-requests">0</div>
                     <div class="metric-trend live">
-                        <span class="pulse-icon">●</span> Real-time Active Concurrency
+                        <span class="pulse-icon">●</span> real-time concurrency
                     </div>
                 </div>
             </div>
 
-            <!-- Card 3: Total Errors / Rejections -->
-            <div class="metric-card glass-panel card-rose">
+            <div class="metric-card card-rose">
                 <div class="card-header">
-                    <span class="card-icon">⚠️</span>
-                    <span class="card-title">TOTAL ERRORS / REJECTS</span>
+                    <span class="card-title">errors / rejects</span>
                 </div>
                 <div class="card-body">
                     <div class="metric-value font-mono" id="total-errors">0</div>
                     <div class="metric-trend error-rate">
-                        <span>4xx / 5xx & Fast Rejects</span>
+                        <span>4xx + 5xx + fast-reject</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Card 4: AI Semantic Cache Hit Ratio -->
-            <div class="metric-card glass-panel card-purple">
+            <div class="metric-card card-purple">
                 <div class="card-header">
-                    <span class="card-icon">🧠</span>
-                    <span class="card-title">AI CACHE SAVINGS (HIT RATIO)</span>
+                    <span class="card-title">cache hit ratio</span>
                 </div>
                 <div class="card-body">
                     <div class="metric-value font-mono" id="cache-hit-ratio">0.0%</div>
                     <div class="metric-trend ai-savings">
-                        <span>💰 Cost & Token Savings</span>
+                        <span>cost &amp; token savings</span>
                     </div>
                 </div>
             </div>
         </main>
 
-        <!-- AI Cache Breakdown & Charts -->
+        <!-- Charts & Stats -->
         <div class="analytics-layout">
-            <!-- Left: Real-time Traffic Graph -->
-            <section class="chart-section glass-panel">
+            <section class="chart-section">
                 <div class="section-header">
-                    <h2>📈 REAL-TIME TRAFFIC TELEMETRY (LIVE 30s)</h2>
-                    <span class="tag font-mono">1s Interval Stream</span>
+                    <h2>traffic (live 30s)</h2>
+                    <span class="tag font-mono">1s interval</span>
                 </div>
                 <div class="chart-wrapper">
                     <canvas id="trafficChart"></canvas>
                 </div>
             </section>
 
-            <!-- Right: AI Semantic Cache Stats -->
-            <section class="ai-stats-section glass-panel">
+            <section class="ai-stats-section">
                 <div class="section-header">
-                    <h2>🎯 AI SEMANTIC CACHE BREAKDOWN</h2>
+                    <h2>semantic cache breakdown</h2>
                 </div>
-                
+
                 <div class="ai-stats-list">
                     <div class="stat-row">
                         <div class="stat-info">
                             <span class="stat-badge hit">HIT</span>
-                            <span class="stat-name">Semantic Cache Hits</span>
+                            <span class="stat-name">cache hits</span>
                         </div>
                         <span class="stat-num font-mono" id="ai-cache-hits">0</span>
                     </div>
@@ -152,14 +138,14 @@
                     <div class="stat-row">
                         <div class="stat-info">
                             <span class="stat-badge miss">MISS</span>
-                            <span class="stat-name">LLM Direct Calls (Misses)</span>
+                            <span class="stat-name">llm direct calls</span>
                         </div>
                         <span class="stat-num font-mono" id="ai-cache-misses">0</span>
                     </div>
 
                     <div class="progress-bar-container">
                         <div class="progress-label">
-                            <span>Cache Efficiency</span>
+                            <span>efficiency</span>
                             <span id="efficiency-percent" class="font-mono">0%</span>
                         </div>
                         <div class="progress-track">
@@ -168,9 +154,9 @@
                     </div>
 
                     <div class="model-info-box font-mono">
-                        <p><strong>Vector Dimensions:</strong> 384 (Normalized)</p>
-                        <p><strong>Model:</strong> all-MiniLM-L6-v2 (ONNX)</p>
-                        <p><strong>Similarity Metric:</strong> Cosine Dot Product</p>
+                        <p><strong>dims:</strong> 384 (normalized)</p>
+                        <p><strong>model:</strong> all-MiniLM-L6-v2 (onnx)</p>
+                        <p><strong>similarity:</strong> cosine dot product</p>
                     </div>
                 </div>
             </section>
@@ -178,7 +164,7 @@
 
         <!-- Footer -->
         <footer class="footer">
-            <p>Zero-Trust API Gateway • Rust 2024 Edition • Developed by <strong>Phung The Vinh</strong></p>
+            <p>zero-trust api gateway · rust 2024 edition · <strong>phung the vinh</strong></p>
         </footer>
     </div>
 

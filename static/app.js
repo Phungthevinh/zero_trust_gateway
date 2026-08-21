@@ -1,10 +1,8 @@
-// =====================================================================
-// Zero-Trust API Gateway Dashboard Application Script
-// Connects to /admin/events via SSE and updates UI & Chart.js
-// =====================================================================
+// zero-trust gateway dashboard
+// sse -> metrics -> chart.js
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Clock Tracker
+    // clock
     function updateClock() {
         const now = new Date();
         const utcString = now.toUTCString().split(' ')[4] + ' UTC';
@@ -13,42 +11,33 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(updateClock, 1000);
     updateClock();
 
-    // 2. Setup Chart.js Real-time Graph
+    // chart setup
     const ctx = document.getElementById('trafficChart').getContext('2d');
     const maxDataPoints = 30;
-
-    // Gradient fills
-    const cyanGradient = ctx.createLinearGradient(0, 0, 0, 300);
-    cyanGradient.addColorStop(0, 'rgba(0, 240, 255, 0.35)');
-    cyanGradient.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
-
-    const emeraldGradient = ctx.createLinearGradient(0, 0, 0, 300);
-    emeraldGradient.addColorStop(0, 'rgba(16, 185, 129, 0.35)');
-    emeraldGradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
 
     const chartData = {
         labels: Array(maxDataPoints).fill(''),
         datasets: [
             {
-                label: 'Total Requests',
-                borderColor: '#00f0ff',
-                backgroundColor: cyanGradient,
-                borderWidth: 2,
-                tension: 0.35,
+                label: 'total requests',
+                borderColor: '#5ccfe6',
+                backgroundColor: 'rgba(92, 207, 230, 0.08)',
+                borderWidth: 1.5,
+                tension: 0.3,
                 fill: true,
-                pointRadius: 2,
-                pointHoverRadius: 5,
+                pointRadius: 0,
+                pointHoverRadius: 3,
                 data: Array(maxDataPoints).fill(0)
             },
             {
-                label: 'Active In-Flight Requests',
-                borderColor: '#10b981',
-                backgroundColor: emeraldGradient,
-                borderWidth: 2,
-                tension: 0.35,
+                label: 'active in-flight',
+                borderColor: '#7ec699',
+                backgroundColor: 'rgba(126, 198, 153, 0.08)',
+                borderWidth: 1.5,
+                tension: 0.3,
                 fill: true,
-                pointRadius: 2,
-                pointHoverRadius: 5,
+                pointRadius: 0,
+                pointHoverRadius: 3,
                 data: Array(maxDataPoints).fill(0)
             }
         ]
@@ -61,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
             responsive: true,
             maintainAspectRatio: false,
             animation: {
-                duration: 400,
+                duration: 300,
                 easing: 'linear'
             },
             interaction: {
@@ -72,26 +61,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 legend: {
                     position: 'top',
                     labels: {
-                        color: '#94a3b8',
-                        font: { family: 'Inter', size: 12 },
+                        color: '#777',
+                        font: { family: 'JetBrains Mono', size: 11 },
                         usePointStyle: true,
-                        boxWidth: 8
+                        boxWidth: 6,
+                        padding: 16
                     }
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(17, 24, 39, 0.95)',
-                    titleColor: '#f8fafc',
-                    bodyColor: '#cbd5e1',
-                    borderColor: 'rgba(255, 255, 255, 0.1)',
+                    backgroundColor: '#1a1a1a',
+                    titleColor: '#d4d4d4',
+                    bodyColor: '#999',
+                    borderColor: '#2a2a2a',
                     borderWidth: 1,
-                    padding: 10,
-                    bodyFont: { family: 'JetBrains Mono' }
+                    padding: 8,
+                    bodyFont: { family: 'JetBrains Mono', size: 11 },
+                    titleFont: { family: 'JetBrains Mono', size: 11 }
                 }
             },
             scales: {
                 x: {
                     grid: {
-                        color: 'rgba(255, 255, 255, 0.04)',
+                        color: 'rgba(255, 255, 255, 0.03)',
                         drawBorder: false
                     },
                     ticks: { display: false }
@@ -103,8 +94,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         drawBorder: false
                     },
                     ticks: {
-                        color: '#64748b',
-                        font: { family: 'JetBrains Mono', size: 11 },
+                        color: '#555',
+                        font: { family: 'JetBrains Mono', size: 10 },
                         precision: 0
                     }
                 }
@@ -112,7 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 3. Connect to SSE Endpoint (/admin/events)
+    // sse connection
     let eventSource = null;
     const statusIndicator = document.getElementById('connection-status');
     const statusLabel = document.getElementById('status-label');
@@ -126,7 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         eventSource.onopen = () => {
             statusIndicator.className = 'status-indicator online';
-            statusLabel.innerText = 'SSE CONNECTED';
+            statusLabel.innerText = 'connected';
         };
 
         eventSource.onmessage = (event) => {
@@ -134,27 +125,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 const metrics = JSON.parse(event.data);
                 updateUI(metrics);
             } catch (err) {
-                console.error('Error parsing SSE metrics:', err);
+                console.error('sse parse error:', err);
             }
         };
 
         eventSource.onerror = (err) => {
             statusIndicator.className = 'status-indicator offline';
-            statusLabel.innerText = 'RECONNECTING...';
-            console.warn('SSE Disconnected, retrying...', err);
+            statusLabel.innerText = 'reconnecting...';
+            console.warn('sse disconnected, retrying...', err);
         };
     }
 
-    // 4. Update UI Elements & Chart
+    // update ui
     function updateUI(metrics) {
-        // Cập nhật thẻ chỉ số chính
         document.getElementById('total-requests').innerText = Number(metrics.total_requests).toLocaleString();
         document.getElementById('active-requests').innerText = Number(metrics.active_requests).toLocaleString();
         document.getElementById('total-errors').innerText = Number(metrics.total_errors).toLocaleString();
         document.getElementById('ai-cache-hits').innerText = Number(metrics.ai_cache_hits).toLocaleString();
         document.getElementById('ai-cache-misses').innerText = Number(metrics.ai_cache_misses).toLocaleString();
 
-        // Tính toán tỉ lệ AI Cache Savings
         const totalAi = metrics.ai_cache_hits + metrics.ai_cache_misses;
         let hitRatio = 0;
         if (totalAi > 0) {
@@ -166,11 +155,10 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('efficiency-percent').innerText = hitRatioStr;
         document.getElementById('efficiency-bar').style.width = hitRatio.toFixed(1) + '%';
 
-        // Cập nhật biểu đồ Real-time
+        // update chart
         const now = new Date();
         const timeLabel = now.toTimeString().split(' ')[0];
 
-        // Shift mảng dữ liệu
         chartData.labels.push(timeLabel);
         chartData.datasets[0].data.push(metrics.total_requests);
         chartData.datasets[1].data.push(metrics.active_requests);
@@ -181,9 +169,8 @@ document.addEventListener('DOMContentLoaded', () => {
             chartData.datasets[1].data.shift();
         }
 
-        trafficChart.update('none'); // Cập nhật mượt mà không re-render toàn bộ
+        trafficChart.update('none');
     }
 
-    // Khởi chạy kết nối
     connectSSE();
 });

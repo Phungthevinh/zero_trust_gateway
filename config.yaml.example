@@ -4,21 +4,38 @@ server:
   port: 8080               # Cổng chạy Gateway công cộng
   log_level: "info"        # Mức độ ghi log (debug, info, warn, error)
 
-# Cấu hình Cache & Database (Phase 2 & 3)
+# Cấu hình Cache & Database
 database:
   redis_url: "redis://127.0.0.1:6379"  # Kết nối Redis để đồng bộ rate limit
   connection_timeout: 5000              # Thời gian chờ kết nối (ms)
 
-# Bảo mật Zero-Trust & Xác thực (Phase 2)
+# Bảo mật Zero-Trust & Xác thực
 security:
   jwt:
     secret_key_path: "certs/jwt_public.pem" # Khóa công khai để xác thực JWT của client
     issuer: "your-auth-service"             # Nhà phát hành token hợp lệ
   zero_trust:
-    private_key_path: "certs/gateway_private.pem" # Khóa riêng để ký chữ ký nội bộ (Ed25519)
+    private_key_path: "certs/gateway_private.pk8" # Khóa riêng để ký chữ ký nội bộ (Ed25519 PKCS#8)
     signature_header: "X-Gateway-Signature"       # Tên header đính kèm chữ ký nội bộ
+  fast_reject:
+    max_header_count: 50
+    max_uri_length: 2048
+    max_body_size: 10485760  # 10MB
+    blocked_paths:
+      - "/wp-admin"
+      - "/wp-login"
+      - "/.env"
+      - "/phpmyadmin"
+      - "/.git"
+      - "/actuator"
+    ip_blacklist:
+      - "192.168.1.100"
+  # Nếu Gateway đứng sau Nginx chạy trên cùng máy:
+  trusted_proxies:
+    - "127.0.0.1"
+    - "::1"
 
-# Tích hợp Trí tuệ nhân tạo (Phase 3 - AI-Native)
+# Tích hợp Trí tuệ nhân tạo (AI-Native)
 ai_native:
   model_path: "models/all-MiniLM-L6-v2.onnx" # Đường dẫn mô hình ONNX Embedding cục bộ
   similarity_threshold: 0.85                 # Độ tương đồng tối thiểu để tính là Cache Hit

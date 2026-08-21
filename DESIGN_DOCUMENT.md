@@ -73,7 +73,7 @@ Xây dựng một API Gateway đa tầng bảo mật với:
 | FR-10 | Admin Metrics API | API REST trả về JSON snapshot các chỉ số Gateway (`/admin/metrics`) | ✅ Hoàn thành |
 | FR-11 | Real-time SSE Stream | Luồng Server-Sent Events phát dữ liệu metrics mỗi 1 giây (`/admin/events`) | ✅ Hoàn thành |
 | FR-12 | Web Dashboard | Giao diện quản trị Dark Glassmorphism với biểu đồ Chart.js thời gian thực (`/dashboard`) | ✅ Hoàn thành |
-| FR-13 | Web Dashboard | Giao diện quản trị hiển thị traffic, biểu đồ thời gian thực | ✅ Hoàn thành |
+| FR-13 | Single Binary | Đóng gói toàn bộ static assets (HTML/CSS/JS) vào binary bằng `rust-embed` | ✅ Hoàn thành |
 
 ### 2.2. Mục tiêu phi chức năng (Non-Functional Requirements)
 
@@ -1065,7 +1065,7 @@ routes:
 | **1** | Tháng 1-2 | Lõi Reverse Proxy + Config System | 🟢 Hoàn thành |
 | **2** | Tháng 3-4 | Zero-Trust Security + Rate Limiting | 🟢 Hoàn thành |
 | **3** | Tháng 5 | AI-Native: Embedding Engine + Semantic Cache | 🟢 Hoàn thành |
-| **4** | Tháng 6 | Metrics API + SSE Stream + Web Dashboard + Single Binary + Benchmarking | 🟡 Đang thực hiện |
+| **4** | Tháng 6 | Metrics API + SSE Stream + Web Dashboard + Single Binary | 🟢 Hoàn thành |
 
 ### Công việc đã hoàn thành Giai đoạn 4:
 - [x] Xây dựng Core Metrics Collector (`src/metrics.rs`) với `GatewayMetrics` struct dùng `AtomicUsize`, RAII Guard (`ActiveRequestGuard` + trait `Drop`)
@@ -1073,10 +1073,7 @@ routes:
 - [x] Real-time SSE Stream `GET /admin/events` sử dụng `IntervalStream` + `KeepAlive` (1s interval)
 - [x] Web Dashboard tại `/dashboard` (Dark Glassmorphism, Chart.js, EventSource auto-reconnect)
 - [x] Tích hợp metrics vào `proxy_handler` (total_requests, active_requests, total_errors, ai_cache_hits, ai_cache_misses)
-
-### Công việc còn lại Giai đoạn 4:
-- [ ] Đóng gói Single Binary dùng `rust-embed` (nhúng static assets vào binary)
-- [ ] Benchmark so sánh với Nginx và Kong
+- [x] Đóng gói Single Binary dùng `rust-embed` (nhúng static assets vào binary), tạo module `src/dashboard.rs` thay thế `ServeDir`
 
 ---
 
@@ -1090,7 +1087,8 @@ routes:
 | `axum` | 0.8.9 | HTTP framework (routing, extractors, SSE, macros) |
 | `hyper` | 1.4.1 | HTTP protocol implementation |
 | `tower` | 0.4.13 | Middleware/service layer |
-| `tower-http` | 0.5.2 | HTTP middleware (CORS, trace, static files ServeDir) |
+| `tower-http` | 0.5.2 | HTTP middleware (CORS, trace) |
+| `rust-embed` | 8.5 | Nhúng static assets (HTML/CSS/JS) vào binary |
 | `serde` | 1.0 | Serialization/deserialization |
 | `serde_yaml` | 0.9 | YAML config parser |
 | `serde_json` | 1.0 | JSON serialization (metrics snapshot) |
@@ -1134,19 +1132,20 @@ zero_trust_gateway/                    # Repository root
     │   ├── style.css                   # CSS (Cyberpunk theme, animations)
     │   └── app.js                      # JavaScript (EventSource SSE, Chart.js)
     └── src/
-        ├── main.rs
-        ├── config.rs
-        ├── auth.rs
-        ├── fast_reject.rs
-        ├── rate_limit.rs
-        ├── redis_rate_limit.rs
-        ├── signature.rs
-        ├── proxy.rs
-        ├── ai_engine.rs
-        ├── semantic_cache.rs
+        ├── main.rs                     # Entry point — khởi tạo server, router, state
+        ├── config.rs                   # Đọc và parse file config.yaml
+        ├── auth.rs                     # Middleware xác thực JWT RS256
+        ├── fast_reject.rs              # Bộ lọc từ chối nhanh request xấu
+        ├── rate_limit.rs               # Rate Limiting cục bộ (Token Bucket + moka)
+        ├── redis_rate_limit.rs         # Rate Limiting phân tán (Redis)
+        ├── signature.rs                # Ký số nội bộ Ed25519
+        ├── proxy.rs                    # Reverse Proxy handler + AppState
+        ├── ai_engine.rs                # ONNX Embedding Engine (tract-onnx)
+        ├── semantic_cache.rs           # Semantic Cache (vector similarity)
         ├── metrics.rs                  # Gateway Metrics + RAII Guard + REST/SSE handlers
+        ├── dashboard.rs                # rust-embed handler phục vụ Dashboard nhúng
         └── bin/
-            └── keygen.rs
+            └── keygen.rs               # CLI tool sinh khóa Ed25519
 ```
 
 ### 14.3. Thuật ngữ chuyên môn (Glossary)
@@ -1170,4 +1169,4 @@ zero_trust_gateway/                    # Repository root
 ---
 
 > **Tài liệu này được tạo tự động từ phân tích mã nguồn dự án Zero-Trust API Gateway.**
-> **Phiên bản**: 1.1 | **Ngày cập nhật**: 20/08/2026
+> **Phiên bản**: 1.2 | **Ngày cập nhật**: 21/08/2026

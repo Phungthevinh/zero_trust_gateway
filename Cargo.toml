@@ -2,6 +2,7 @@
 name = "zero_trust_gateway"
 version = "0.1.0"
 edition = "2024"
+default-run = "zero_trust_gateway"
 authors = ["Phung The Vinh <ptvstar2003@gmail.com>"]
 license-file = "LICENSE"
 publish = false
@@ -30,3 +31,4 @@ serde_json = "1.0.151"
 ipnetwork = { version = "0.21.1", features = ["serde"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 futures-util = "0.3"
+rust-embed = "8.5"

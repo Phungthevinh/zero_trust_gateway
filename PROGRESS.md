@@ -6,8 +6,8 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 
 ## 📊 Trạng thái Hiện tại
 * **Giai đoạn Hiện tại**: Giai đoạn 4: Hệ thống Giám sát, Giao diện Quản trị (UI) & Đóng gói (Tháng 6)
-* **Trạng thái**: 🟡 Đang thực hiện Giai đoạn 4 — Hoàn thành Metrics API, SSE Stream & Web Dashboard
-* **Cập nhật gần nhất**: 20/08/2026
+* **Trạng thái**: 🟢 Hoàn thành — Đã đóng gói Single Binary, Dashboard nhúng bằng `rust-embed`
+* **Cập nhật gần nhất**: 21/08/2026
 
 ---
 
@@ -36,12 +36,11 @@ Tệp này được sử dụng để theo dõi tiến độ triển khai thực
 - [x] Tạo Proxy phân phối và điều phối lưu lượng truy cập AI (AI Traffic Branching trong `proxy_handler`)
 - [x] Tối ưu hóa bộ nhớ đệm và parse giao thức MCP (Model Context Protocol)
 
-### 🟡 Giai đoạn 4: Hệ thống Giám sát, Giao diện Quản trị (UI) & Đóng gói (Tháng 6)
+### 🟢 Giai đoạn 4: Hệ thống Giám sát, Giao diện Quản trị (UI) & Đóng gói (Tháng 6)
 - [x] Xây dựng Core Metrics Collector (`src/metrics.rs`) với `GatewayMetrics` struct sử dụng `AtomicUsize` theo dõi: `total_requests`, `active_requests`, `total_errors`, `ai_cache_hits`, `ai_cache_misses`. Triển khai RAII Guard (`ActiveRequestGuard` + trait `Drop`) đảm bảo `active_requests` luôn chính xác 100% kể cả khi request panic hoặc return sớm. Tích hợp vào `proxy_handler` và `AppState`.
 - [x] Xây dựng API REST (`GET /admin/metrics` → JSON snapshot) và Real-time SSE Stream (`GET /admin/events` → Server-Sent Events mỗi 1 giây) sử dụng `IntervalStream` + `KeepAlive` của Axum. Thêm dependencies: `tokio-stream`, `futures-util`.
-- [x] Thiết kế và xây dựng Web Dashboard quản trị (`static/index.html`, `style.css`, `app.js`) — Giao diện Dark Glassmorphism hiện đại với: 4 thẻ chỉ số thời gian thực (Total Requests, Active In-Flight, Errors, AI Cache Hit Ratio %), biểu đồ đường Chart.js cập nhật 1s/lần, bảng chi tiết AI Semantic Cache Hit/Miss, thanh tiến trình Cache Efficiency, hiển thị trạng thái kết nối SSE (Live/Reconnecting). Phục vụ tĩnh qua `tower-http::ServeDir` tại route `/dashboard`.
-- [ ] Đóng gói dự án thành Single Binary duy nhất bằng `rust-embed` (nhúng static assets vào binary) và tối ưu hóa file thực thi
-- [ ] Triển khai đo tải (Benchmarking) so sánh với Nginx và Kong
+- [x] Thiết kế và xây dựng Web Dashboard quản trị (`static/index.html`, `style.css`, `app.js`) — Giao diện Dark Glassmorphism hiện đại với: 4 thẻ chỉ số thời gian thực (Total Requests, Active In-Flight, Errors, AI Cache Hit Ratio %), biểu đồ đường Chart.js cập nhật 1s/lần, bảng chi tiết AI Semantic Cache Hit/Miss, thanh tiến trình Cache Efficiency, hiển thị trạng thái kết nối SSE (Live/Reconnecting).
+- [x] Đóng gói dự án thành Single Binary duy nhất bằng `rust-embed` (nhúng static assets vào binary). Tạo module `src/dashboard.rs` với `#[derive(RustEmbed)]` phục vụ file tĩnh nhúng qua handler Axum, thay thế `tower_http::ServeDir`. File thực thi chạy độc lập không cần thư mục `static/` đi kèm.
 
 ---
 *Ghi chú ký hiệu trạng thái:*

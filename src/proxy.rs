@@ -249,7 +249,7 @@ async fn handle_ai_request(
             }
         };
 
-        extracted_prompt = Some(prompt.clone());
+        extracted_prompt = Some(prompt.to_string());
         let cache = state.semantic_cache.as_ref().unwrap();
 
         if let Some(cached_response) = cache.lookup(&prompt) {
@@ -315,7 +315,7 @@ async fn handle_ai_request(
             if let Ok(res_json) = serde_json::from_slice::<serde_json::Value>(&res_bytes) {
                 if let Some(ai_text) = res_json["choices"][0]["message"]["content"].as_str() {
                     let cache = state.semantic_cache.as_ref().unwrap();
-                    cache.insert(prompt, ai_text.to_string());
+                    cache.insert(&prompt, ai_text.to_string());
                     tracing::info!(
                         "Semantic Cache MISS, response cached cho prompt: {}",
                         prompt
@@ -352,12 +352,12 @@ fn is_mcp_or_tool_request(json_body: &serde_json::Value) -> bool {
 }
 
 fn get_client_ip(
-    IpAddr: SocketAddr,
+    ip_addr: SocketAddr,
     headers: &HeaderMap,
     trusted_proxies: &Vec<ipnetwork::IpNetwork>,
 ) -> String {
     //trích xuất IPAddr từ soketAddr
-    let tcp_ip = IpAddr.ip();
+    let tcp_ip = ip_addr.ip();
     if trusted_proxies
         .iter()
         .any(|network| network.contains(tcp_ip))
